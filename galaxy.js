@@ -8,7 +8,9 @@ const flash = document.getElementById('warp-flash');
 const statusEl = document.getElementById('gx-status');
 const loadingEl = document.getElementById('loading');
 const infoPanel = document.getElementById('gx-info');
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v13';
+const IMG_FALLBACK = 'https://images-assets.nasa.gov/image/PIA06968/PIA06968~orig.jpg';
+const NASA = (id) => `https://images-assets.nasa.gov/image/${id}/${id}~orig.jpg`;
 
 // ─── Ключевые объекты Млечного Пути ──────────────────────────────────────────
 // r — доля радиуса диска (0 = центр), a — угол на диске (°), y — высота над плоскостью
@@ -17,6 +19,8 @@ const OBJECTS = [
   {
     id: 'sgr-a', name: 'Стрелец A*', kind: 'blackhole',
     r: 0, a: 0, y: 0, color: 0xffaa33, size: 5.5,
+    image: NASA('PIA25477'),
+    imageCredit: 'Event Horizon Telescope / NASA',
     type: 'Сверхмассивная чёрная дыра',
     desc: 'Сердце нашей Галактики. Сверхмассивная чёрная дыра массой около 4,3 миллиона Солнц. Вокруг неё вращается весь Млечный Путь.',
     distEarth: '≈ 26 000 св. лет', distCenter: '0 (это и есть центр)',
@@ -25,6 +29,8 @@ const OBJECTS = [
   {
     id: 'bulge', name: 'Галактический балдж', kind: 'core',
     r: 0.14, a: 120, y: 0, color: 0xffd27f, size: 3.2,
+    image: NASA('PIA06968'),
+    imageCredit: 'NASA / JPL-Caltech',
     type: 'Центральное сгущение звёзд',
     desc: 'Плотное скопление миллиардов старых звёзд вокруг центра. Здесь звёзды расположены в тысячи раз плотнее, чем возле Солнца.',
     distEarth: '≈ 26 000 св. лет', distCenter: '≈ 3 000 св. лет',
@@ -33,6 +39,8 @@ const OBJECTS = [
   {
     id: 'solar', name: 'Солнечная система', kind: 'system', solar: true,
     r: 0.6, a: 25, y: 1.5, color: 0xffe08a, size: 3.4,
+    image: NASA('PIA01341'),
+    imageCredit: 'NASA',
     type: 'Наш дом · рукав Ориона',
     desc: 'Наша звёздная система в рукаве Ориона. Отсюда мы наблюдаем всю Галактику. Нажмите, чтобы прыгнуть внутрь и исследовать планеты!',
     distEarth: '0 (мы здесь)', distCenter: '≈ 26 000 св. лет',
@@ -41,6 +49,8 @@ const OBJECTS = [
   {
     id: 'proxima', name: 'Проксима Центавра', kind: 'star',
     r: 0.605, a: 22, y: 1.2, color: 0xff6644, size: 2.0,
+    image: NASA('PIA23457'),
+    imageCredit: 'NASA / ESA / STScI',
     type: 'Красный карлик · ближайшая звезда',
     desc: 'Ближайшая к Солнцу звезда. Красный карлик с планетой Proxima b в зоне обитаемости. Свет от неё летит к нам более 4 лет.',
     distEarth: '4,24 св. года', distCenter: '≈ 26 000 св. лет',
@@ -49,6 +59,8 @@ const OBJECTS = [
   {
     id: 'sirius', name: 'Сириус', kind: 'star',
     r: 0.62, a: 33, y: 2.0, color: 0xcfe6ff, size: 2.4,
+    image: NASA('PIA04204'),
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Ярчайшая звезда неба',
     desc: 'Самая яркая звезда ночного неба. Двойная система: бело-голубой Сириус A и белый карлик Сириус B.',
     distEarth: '8,6 св. года', distCenter: '≈ 26 000 св. лет',
@@ -57,6 +69,8 @@ const OBJECTS = [
   {
     id: 'vega', name: 'Вега', kind: 'star',
     r: 0.58, a: 40, y: 3.0, color: 0xdfe9ff, size: 2.2,
+    image: NASA('PIA16884'),
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Звезда созвездия Лиры',
     desc: 'Одна из самых известных звёзд неба, служила эталоном яркости. Около 12 000 лет назад была Полярной звездой.',
     distEarth: '25 св. лет', distCenter: '≈ 26 000 св. лет',
@@ -65,6 +79,8 @@ const OBJECTS = [
   {
     id: 'polaris', name: 'Полярная звезда', kind: 'star',
     r: 0.63, a: 15, y: 3.5, color: 0xfff4d6, size: 2.3,
+    image: NASA('PIA12348'),
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Северная путеводная звезда',
     desc: 'Указывает на север и почти не движется по небу. Жёлтый сверхгигант-цефеида, по которому веками ориентировались мореплаватели.',
     distEarth: '≈ 433 св. года', distCenter: '≈ 26 000 св. лет',
@@ -73,6 +89,8 @@ const OBJECTS = [
   {
     id: 'betelgeuse', name: 'Бетельгейзе', kind: 'star',
     r: 0.66, a: 48, y: -2.0, color: 0xff5522, size: 2.9,
+    image: NASA('PIA23452'),
+    imageCredit: 'ALMA / ESO / NAOJ / NRAO',
     type: 'Красный сверхгигант',
     desc: 'Огромная умирающая звезда в созвездии Ориона. Если поставить её на место Солнца, она поглотила бы орбиту Юпитера. Готова взорваться сверхновой.',
     distEarth: '≈ 640 св. лет', distCenter: '≈ 26 000 св. лет',
@@ -81,6 +99,8 @@ const OBJECTS = [
   {
     id: 'pleiades', name: 'Плеяды (M45)', kind: 'cluster',
     r: 0.64, a: 58, y: 4.0, color: 0x9fc4ff, size: 3.0,
+    image: NASA('PIA06176'),
+    imageCredit: 'NASA / ESA / AURA / Caltech',
     type: 'Рассеянное звёздное скопление',
     desc: 'Молодые голубые звёзды, окутанные туманностью. Видны невооружённым глазом как «Семь сестёр».',
     distEarth: '≈ 444 св. года', distCenter: '≈ 26 000 св. лет',
@@ -89,6 +109,8 @@ const OBJECTS = [
   {
     id: 'orion-neb', name: 'Туманность Ориона', kind: 'nebula',
     r: 0.68, a: 52, y: -3.5, color: 0xff88cc, size: 4.2,
+    image: NASA('PIA08235'),
+    imageCredit: 'NASA / ESA / M. Robberto',
     type: 'Область звездообразования (M42)',
     desc: 'Ближайший к нам «звёздный роддом» — гигантское облако газа, где прямо сейчас рождаются новые звёзды и планеты.',
     distEarth: '≈ 1 344 св. года', distCenter: '≈ 26 000 св. лет',
@@ -97,6 +119,8 @@ const OBJECTS = [
   {
     id: 'crab', name: 'Крабовидная туманность', kind: 'nebula',
     r: 0.5, a: 70, y: 6.0, color: 0x66ffcc, size: 3.6,
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Crab_Nebula.jpg/960px-Crab_Nebula.jpg',
+    imageCredit: 'NASA / ESA / ASU',
     type: 'Остаток сверхновой (M1)',
     desc: 'Останки звезды, взорвавшейся в 1054 году — вспышку видели китайские астрономы днём. В центре крутится нейтронная звезда-пульсар.',
     distEarth: '≈ 6 500 св. лет', distCenter: '≈ 20 000 св. лет',
@@ -105,6 +129,8 @@ const OBJECTS = [
   {
     id: 'eagle', name: 'Столпы Творения', kind: 'nebula',
     r: 0.42, a: 95, y: -5.0, color: 0xffbb66, size: 4.4,
+    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg/960px-Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg',
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Туманность Орла (M16)',
     desc: 'Знаменитые «Столпы Творения» — колонны газа и пыли высотой в световые годы, где формируются новые звёзды. Прославлены снимком «Хаббла».',
     distEarth: '≈ 5 700 св. лет', distCenter: '≈ 20 000 св. лет',
@@ -113,6 +139,8 @@ const OBJECTS = [
   {
     id: 'carina', name: 'Туманность Киля', kind: 'nebula',
     r: 0.38, a: 200, y: 4.0, color: 0xff99aa, size: 4.6,
+    image: NASA('PIA09176'),
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Область η Киля (NGC 3372)',
     desc: 'Одна из крупнейших туманностей неба. Внутри — Эта Киля, гипергигант, который может взорваться как гиперновая.',
     distEarth: '≈ 7 500 св. лет', distCenter: '≈ 18 000 св. лет',
@@ -121,6 +149,8 @@ const OBJECTS = [
   {
     id: 'omega-cen', name: 'Омега Центавра', kind: 'cluster',
     r: 0.95, a: 230, y: 28.0, color: 0xfff0c0, size: 4.8,
+    image: NASA('PIA09178'),
+    imageCredit: 'NASA / ESA / Hubble',
     type: 'Шаровое скопление (ω Cen)',
     desc: 'Крупнейшее шаровое скопление Галактики — почти 10 миллионов звёзд в шаре. Возможно, ядро поглощённой карликовой галактики.',
     distEarth: '≈ 17 000 св. лет', distCenter: '≈ 21 000 св. лет',
@@ -558,8 +588,13 @@ function returnToOverview() {
 
 // ─── Инфо-панель ─────────────────────────────────────────────────────────────
 function showInfo(o) {
+  const credit = o.imageCredit ? `<span class="gx-info-photo-credit">${o.imageCredit}</span>` : '';
   infoPanel.innerHTML = `
     <button class="gx-info-close" aria-label="Закрыть">✕</button>
+    <figure class="gx-info-photo">
+      <img src="${o.image || IMG_FALLBACK}" alt="${o.name}" loading="lazy">
+      ${credit}
+    </figure>
     <div class="gx-info-head">
       <span class="gx-info-dot" style="background:#${o.color.toString(16).padStart(6, '0')}"></span>
       <div>
@@ -576,6 +611,8 @@ function showInfo(o) {
     <button class="gx-info-back">← Вернуться к обзору Галактики</button>
   `;
   infoPanel.classList.add('open');
+  const img = infoPanel.querySelector('.gx-info-photo img');
+  img.onerror = () => { img.src = IMG_FALLBACK; };
   infoPanel.querySelector('.gx-info-close').onclick = hideInfo;
   infoPanel.querySelector('.gx-info-back').onclick = returnToOverview;
 }
