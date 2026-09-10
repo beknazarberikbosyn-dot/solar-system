@@ -108,7 +108,7 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
 
@@ -429,6 +429,9 @@ function openBento(index) {
   requestAnimationFrame(() => bento.classList.add('open'));
   uiPanel.classList.add('dimmed');
   setMode(State.INFO);
+  infoGraceFrames = INFO_OPEN_GRACE;
+  fistFrames = 0;
+  pinchFrames = 0;
   statusEl.textContent = '✌️ Знак мира — след. планета | ✊ Кулак — выход';
 }
 
@@ -452,7 +455,11 @@ let lastVideoTime = -1;
 let actionCooldown = 0;
 let pinchFrames = 0;
 let peaceFrames = 0;
+let fistFrames = 0;
+let infoGraceFrames = 0;
 const PEACE_HOLD_FRAMES = 5;
+const FIST_HOLD_FRAMES = 12;
+const INFO_OPEN_GRACE = 40;
 
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
@@ -464,9 +471,16 @@ function dist2d(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function isFingerCurled(landmarks, tip, pip) {
+  return landmarks[tip].y > landmarks[pip].y + 0.01;
+}
+
 function isFist(landmarks) {
-  return dist2d(landmarks[8], landmarks[0]) < dist2d(landmarks[5], landmarks[0]) * 1.1
-    && dist2d(landmarks[12], landmarks[0]) < dist2d(landmarks[9], landmarks[0]) * 1.1;
+  if (isPinching(landmarks) || isPeaceSign(landmarks)) return false;
+  return [8, 12, 16, 20].every((tip, i) => {
+    const pip = [6, 10, 14, 18][i];
+    return isFingerCurled(landmarks, tip, pip);
+  });
 }
 
 function isOpenPalm(landmarks) {
@@ -546,12 +560,21 @@ function processHandGestures(landmarks) {
 
     // ── INFO: ✌️ → след. планета, ✊ → возврат ──
     if (appState === State.INFO) {
-      if (fist && actionCooldown === 0) {
-        actionCooldown = ACTION_COOLDOWN;
-        peaceFrames = 0;
-        returnToSystem();
+      if (infoGraceFrames > 0) infoGraceFrames--;
+
+      if (fist && infoGraceFrames === 0) {
+        fistFrames++;
+        if (fistFrames >= FIST_HOLD_FRAMES && actionCooldown === 0) {
+          actionCooldown = ACTION_COOLDOWN;
+          peaceFrames = 0;
+          fistFrames = 0;
+          returnToSystem();
+        } else {
+          statusEl.textContent = `✊ Держите кулак… ${Math.round((fistFrames / FIST_HOLD_FRAMES) * 100)}%`;
+        }
         return;
       }
+      fistFrames = 0;
 
       const peace = isPeaceSign(landmarks);
       updatePeaceUI(peace);
@@ -630,6 +653,7 @@ function processHandGestures(landmarks) {
 function onHandLost() {
   pinchFrames = 0;
   peaceFrames = 0;
+  fistFrames = 0;
   if (appState === State.SYSTEM) {
     clearHover();
     statusEl.textContent = 'Рука не обнаружена';
