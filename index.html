@@ -4,85 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Солнечная система — Hand Tracking</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <title>Млечный Путь — интерактивная карта Галактики</title>
+  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="galaxy.css?v=9">
 </head>
 <body>
   <canvas id="scene"></canvas>
 
-  <video id="webcam" autoplay playsinline muted></video>
-  <canvas id="hand-overlay"></canvas>
-
+  <!-- Панель управления -->
   <div id="ui">
-    <h1>☀️ Солнечная система</h1>
-    <p id="mode-badge">Режим: загрузка</p>
-    <p id="status">Загрузка модели распознавания рук…</p>
-    <p id="planet-name">Планета: —</p>
+    <h1>🌌 Млечный Путь</h1>
+    <p id="mode-badge">Карта Галактики</p>
+    <p id="gx-status">Загрузка Галактики…</p>
 
     <div class="controls">
-      <h2>Управление жестами</h2>
+      <h2>Как исследовать</h2>
       <ul>
-        <li><span>☝️</span> Указательный палец — навести на планету</li>
-        <li><span>🤏</span> Щипок (большой + указательный) — приближение</li>
-        <li><span>🤏</span> Щипок у планеты — открыть информацию</li>
-        <li><span>✌️</span> Знак мира — следующая планета (в карточке)</li>
-        <li><span>✊</span> Кулак — закрыть карточку, вернуться</li>
-        <li><span>✋</span> Открытая ладонь — вращение (режим системы)</li>
+        <li><span>🖱️</span> Клик по объекту — прыжок на скорости света</li>
+        <li><span>✋</span> Перетаскивание — вращение Галактики</li>
+        <li><span>🔍</span> Колесо мыши — приближение/отдаление</li>
+        <li><span>☀️</span> «Солнечная система» — вход в детальный симулятор</li>
+        <li><span>🕳️</span> В центре — Стрелец A*, чёрная дыра</li>
       </ul>
     </div>
-
-    <button id="start-btn" hidden>Разрешить камеру</button>
   </div>
 
-  <!-- Bento-карточка с информацией о планете -->
-  <aside id="bento" class="hidden">
-    <div class="bento-header">
-      <img id="bento-img" src="" alt="">
-      <div>
-        <h2 id="bento-title">—</h2>
-        <p id="bento-subtitle">—</p>
-      </div>
-    </div>
-    <div class="bento-grid">
-      <div class="bento-cell wide">
-        <span class="label">Описание</span>
-        <p id="bento-desc">—</p>
-      </div>
-      <div class="bento-cell">
-        <span class="label">Диаметр</span>
-        <p id="bento-diameter">—</p>
-      </div>
-      <div class="bento-cell">
-        <span class="label">От Солнца</span>
-        <p id="bento-distance">—</p>
-      </div>
-      <div class="bento-cell">
-        <span class="label">Спутники</span>
-        <p id="bento-moons">—</p>
-      </div>
-      <div class="bento-cell">
-        <span class="label">Сутки</span>
-        <p id="bento-day">—</p>
-      </div>
-      <div class="bento-cell">
-        <span class="label">Год</span>
-        <p id="bento-year">—</p>
-      </div>
-    </div>
-    <div id="peace-bar">
-      <span id="peace-label">✌️ Покажите знак мира для переключения</span>
-      <div class="peace-track"><div id="peace-fill"></div></div>
-    </div>
-    <p class="bento-hint">✊ Кулак — вернуться в систему</p>
-  </aside>
+  <!-- Слой HTML-подписей объектов -->
+  <div id="labels"></div>
+
+  <!-- Инфо-панель объекта -->
+  <aside id="gx-info"></aside>
+
+  <!-- Нижняя подсказка -->
+  <div id="gx-hint">Наведите на светящуюся точку и кликните — вы помчитесь к ней со скоростью света</div>
 
   <div id="version-tag">…</div>
-  <div id="crosshair"></div>
 
   <div id="loading">
     <div class="spinner"></div>
-    <p>Инициализация…</p>
+    <p>Строим Млечный Путь…</p>
   </div>
+
+  <!-- Оверлей гиперпрыжка -->
+  <canvas id="warp-overlay"></canvas>
+  <div id="warp-flash"></div>
 
   <script type="importmap">
   {
@@ -91,6 +56,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=8"></script>
+  <script type="module" src="galaxy.js?v=9"></script>
 </body>
 </html>

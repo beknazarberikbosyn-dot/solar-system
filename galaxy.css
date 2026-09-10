@@ -1,0 +1,264 @@
+/* ─── Галактика: подписи, инфо-панель, гиперпрыжок ─── */
+
+#labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.gx-label {
+  position: absolute;
+  transform: translate(-50%, -140%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: rgba(8, 12, 30, 0.55);
+  border: 1px solid rgba(140, 170, 255, 0.25);
+  border-radius: 20px;
+  color: #dfe6ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+  transition: transform 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.gx-label .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c, #fff);
+  box-shadow: 0 0 8px var(--c, #fff), 0 0 14px var(--c, #fff);
+  flex-shrink: 0;
+}
+
+.gx-label:hover,
+.gx-label.hover {
+  background: rgba(20, 30, 60, 0.9);
+  border-color: rgba(180, 200, 255, 0.7);
+  box-shadow: 0 0 20px rgba(120, 160, 255, 0.35);
+  transform: translate(-50%, -160%) scale(1.08);
+  z-index: 5;
+}
+
+.gx-label.solar {
+  border-color: rgba(255, 210, 120, 0.6);
+  background: rgba(40, 30, 10, 0.65);
+  color: #ffe9b0;
+}
+
+.gx-label.solar::after {
+  content: '↵ войти';
+  margin-left: 4px;
+  font-size: 0.6rem;
+  opacity: 0.75;
+  color: #ffd27f;
+}
+
+.gx-label.bh {
+  border-color: rgba(255, 160, 60, 0.7);
+  background: rgba(35, 15, 5, 0.7);
+  color: #ffc27a;
+  font-weight: 700;
+}
+
+/* ─── Инфо-панель объекта ─── */
+#gx-info {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  z-index: 40;
+  background: rgba(10, 14, 35, 0.9);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  border-radius: 20px;
+  padding: 22px;
+  transform: translateX(120%);
+  opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s;
+  pointer-events: none;
+}
+
+#gx-info.open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gx-info-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccd;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.gx-info-close:hover { background: rgba(255, 255, 255, 0.18); }
+
+.gx-info-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-right: 30px;
+}
+
+.gx-info-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 18px currentColor;
+}
+
+.gx-info-head h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.gx-info-head p {
+  font-size: 0.8rem;
+  color: #8aa;
+  margin-top: 2px;
+}
+
+.gx-info-desc {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #ccd;
+  margin-bottom: 16px;
+}
+
+.gx-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.gx-info-grid > div {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.gx-info-grid .wide { grid-column: 1 / -1; }
+
+.gx-info-grid span {
+  display: block;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #667799;
+  margin-bottom: 3px;
+}
+
+.gx-info-grid b {
+  font-size: 0.86rem;
+  color: #dde;
+  font-weight: 600;
+}
+
+.gx-info-back {
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3355ff, #6633ff);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.gx-info-back:hover { opacity: 0.85; }
+
+/* ─── Кнопка возврата в галактику (на странице системы) ─── */
+#back-to-galaxy {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 45;
+  padding: 10px 18px;
+  background: rgba(10, 14, 35, 0.85);
+  border: 1px solid rgba(140, 170, 255, 0.4);
+  border-radius: 12px;
+  color: #bcd;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+#back-to-galaxy:hover {
+  background: rgba(30, 40, 80, 0.9);
+  border-color: rgba(180, 200, 255, 0.8);
+  box-shadow: 0 0 20px rgba(120, 160, 255, 0.3);
+}
+
+/* ─── Оверлей гиперпрыжка ─── */
+#warp-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+#warp-overlay.active { display: block; }
+
+#warp-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+@keyframes flashIn {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+@keyframes flashOut {
+  0% { opacity: 0; }
+  60% { opacity: 0.95; }
+  100% { opacity: 0.95; }
+}
+#warp-flash.flash-in { animation: flashIn 0.9s ease-out forwards; }
+#warp-flash.flash-out { animation: flashOut 0.7s ease-in forwards; }
+
+/* ─── Галактический заголовок / подсказки ─── */
+#gx-hint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  padding: 8px 18px;
+  background: rgba(10, 14, 35, 0.7);
+  border: 1px solid rgba(120, 160, 255, 0.25);
+  border-radius: 20px;
+  font-size: 0.78rem;
+  color: #9ab;
+  text-align: center;
+  backdrop-filter: blur(8px);
+}

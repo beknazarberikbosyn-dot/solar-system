@@ -108,9 +108,10 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const APP_VERSION = 'v8';
+const APP_VERSION = 'v11';
 const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
+let handActive = false;
 
 // ─── Three.js ───────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -321,7 +322,7 @@ function returnToSystem() {
   uiPanel.classList.remove('dimmed');
   clearHover();
   setMode(State.SYSTEM);
-  statusEl.textContent = '✋ Открытая ладонь — вращение системы';
+  statusEl.textContent = '🖱️ Наведите курсор на планету и кликните';
 }
 
 // ─── Выбор планеты (экранные координаты + большая зона) ─────────────────────
@@ -432,7 +433,7 @@ function openBento(index) {
   infoGraceFrames = INFO_OPEN_GRACE;
   fistFrames = 0;
   pinchFrames = 0;
-  statusEl.textContent = '✌️ Знак мира — след. планета | ✊ Кулак — выход';
+  statusEl.textContent = '🖱️ Кнопки в карточке | ✌️ знак мира | ✊ кулак';
 }
 
 function switchToNextPlanet() {
@@ -449,8 +450,132 @@ function closeBento() {
   uiPanel.classList.remove('dimmed');
 }
 
+document.getElementById('bento-next')?.addEventListener('click', () => {
+  if (camState.flying || camState.lockedPlanet < 0) return;
+  switchToNextPlanet();
+});
+document.getElementById('bento-back')?.addEventListener('click', () => {
+  if (camState.flying) return;
+  returnToSystem();
+});
+
+// ─── Mouse / Cursor управление ────────────────────────────────────────────────
+const mouse = { down: false, dragging: false, moved: 0, lastX: 0, lastY: 0 };
+
+function updateCursorAim(screenX, screenY) {
+  crosshair.classList.add('visible');
+  updateCrosshair(screenX, screenY, false);
+
+  if (appState === State.SYSTEM) {
+    hoveredPlanet = pickPlanetByScreen(screenX, screenY);
+    setHighlight(hoveredPlanet);
+    if (hoveredPlanet >= 0) {
+      crosshair.classList.add('has-target');
+      planetNameEl.textContent = `→ ${PLANETS[hoveredPlanet].name}`;
+      statusEl.textContent = `🖱️ ${PLANETS[hoveredPlanet].name} — клик для приближения`;
+    } else {
+      planetNameEl.textContent = 'Планета: —';
+      statusEl.textContent = '🖱️ Наведите на планету или перетащите для вращения';
+    }
+  } else if (appState === State.LOCKED) {
+    statusEl.textContent = '🖱️ Клик — открыть информацию о планете';
+  }
+}
+
+function handleMouseClick(screenX, screenY) {
+  if (camState.flying || handActive) return;
+
+  if (appState === State.SYSTEM) {
+    const idx = pickPlanetByScreen(screenX, screenY);
+    if (idx >= 0) {
+      flyToPlanet(idx);
+      statusEl.textContent = `🚀 Приближение к ${PLANETS[idx].name}…`;
+    }
+  } else if (appState === State.LOCKED) {
+    openBento(camState.lockedPlanet);
+  }
+}
+
+function initMouseControls() {
+  canvas.style.cursor = 'grab';
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target !== canvas) return;
+    mouse.down = true;
+    mouse.dragging = false;
+    mouse.moved = 0;
+    mouse.lastX = e.clientX;
+    mouse.lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (mouse.down) {
+      const dx = e.clientX - mouse.lastX;
+      const dy = e.clientY - mouse.lastY;
+      mouse.moved += Math.abs(dx) + Math.abs(dy);
+      mouse.lastX = e.clientX;
+      mouse.lastY = e.clientY;
+
+      if (mouse.moved > 6) {
+        mouse.dragging = true;
+        canvas.style.cursor = 'grabbing';
+        if (!camState.flying && appState === State.SYSTEM) {
+          camState.targetAzimuth -= dx * 0.005;
+          camState.targetElevation = THREE.MathUtils.clamp(
+            camState.targetElevation + dy * 0.005, -0.3, 1.2
+          );
+          camState.savedOrbit.azimuth = camState.targetAzimuth;
+          camState.savedOrbit.elevation = camState.targetElevation;
+          camState.savedOrbit.distance = camState.targetDistance;
+          if (!handActive) clearHover();
+        }
+      }
+      return;
+    }
+
+    if (!handActive && !camState.flying && appState !== State.INFO) {
+      updateCursorAim(e.clientX, e.clientY);
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (!mouse.down) return;
+    const wasDrag = mouse.dragging;
+    mouse.down = false;
+    mouse.dragging = false;
+    canvas.style.cursor = 'grab';
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* noop */ }
+
+    if (!wasDrag && !handActive) handleMouseClick(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    if (!mouse.down && !handActive && appState === State.SYSTEM) clearHover();
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (camState.flying) return;
+    camState.targetDistance = THREE.MathUtils.clamp(
+      camState.targetDistance * (1 + e.deltaY * 0.0012), 25, 200
+    );
+    camState.savedOrbit.distance = camState.targetDistance;
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appState === State.INFO) returnToSystem();
+  });
+}
+
 // ─── Hand Tracking ────────────────────────────────────────────────────────────
 let handLandmarker = null;
+let handTrackingPromise = null;
+
+function ensureHandTracking() {
+  if (!handTrackingPromise) handTrackingPromise = initHandTracking();
+  return handTrackingPromise;
+}
 let lastVideoTime = -1;
 let actionCooldown = 0;
 let pinchFrames = 0;
@@ -552,6 +677,7 @@ function tryPinchAction(landmarks) {
 
 function processHandGestures(landmarks) {
   try {
+    handActive = true;
     if (actionCooldown > 0) actionCooldown--;
 
     const fist = isFist(landmarks);
@@ -651,12 +777,13 @@ function processHandGestures(landmarks) {
 }
 
 function onHandLost() {
+  handActive = false;
   pinchFrames = 0;
   peaceFrames = 0;
   fistFrames = 0;
   if (appState === State.SYSTEM) {
     clearHover();
-    statusEl.textContent = 'Рука не обнаружена';
+    statusEl.textContent = '🖱️ Наведите курсор на планету и кликните';
   }
 }
 
@@ -702,22 +829,41 @@ async function initHandTracking() {
     runningMode: 'VIDEO',
     numHands: 1,
   });
-  statusEl.textContent = 'Нажмите «Разрешить камеру»';
-  startBtn.hidden = false;
-  loadingEl.classList.add('hidden');
 }
 
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: 640, height: 480 },
-  });
-  video.srcObject = stream;
-  await video.play();
-  handCanvas.width = 200;
-  handCanvas.height = 150;
-  startBtn.hidden = true;
-  statusEl.textContent = `☝️ Наведите палец → 🤏 щипок для полёта (${APP_VERSION})`;
-  detectHands();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    statusEl.textContent = 'Камера недоступна в этом браузере — используйте мышь';
+    return;
+  }
+  try {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Подключение…';
+    if (!handLandmarker) {
+      startBtn.textContent = 'Загрузка модели жестов…';
+      await ensureHandTracking();
+    }
+    startBtn.textContent = 'Подключение…';
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 640, height: 480 },
+    });
+    video.srcObject = stream;
+    await video.play();
+    handCanvas.width = 200;
+    handCanvas.height = 150;
+    startBtn.hidden = true;
+    statusEl.textContent = `🖱️ Мышь или ☝️ палец → 🤏 щипок для полёта (${APP_VERSION})`;
+    detectHands();
+  } catch (err) {
+    startBtn.disabled = false;
+    startBtn.textContent = 'Разрешить камеру';
+    const msg = err.name === 'NotAllowedError'
+      ? 'Доступ к камере запрещён — разрешите в настройках браузера'
+      : err.name === 'NotFoundError'
+        ? 'Камера не найдена'
+        : err.message;
+    statusEl.textContent = `Камера: ${msg}. Управление мышью работает.`;
+  }
 }
 
 function detectHands() {
@@ -772,15 +918,26 @@ window.addEventListener('resize', () => {
 });
 
 // ─── Запуск ───────────────────────────────────────────────────────────────────
-Promise.all([
-  createPlanets(),
-  initHandTracking(),
-]).then(() => {
-  setMode(State.SYSTEM);
-  if (versionTag) versionTag.textContent = APP_VERSION;
-}).catch(err => {
-  statusEl.textContent = 'Ошибка: ' + err.message;
-  loadingEl.classList.add('hidden');
-});
+async function boot() {
+  try {
+    await createPlanets();
+    loadingEl.classList.add('hidden');
+    setMode(State.SYSTEM);
+    if (versionTag) versionTag.textContent = APP_VERSION;
+    initMouseControls();
+    startBtn.hidden = false;
+    statusEl.textContent = '🖱️ Наведите курсор на планету и кликните | колесо — зум';
 
+    ensureHandTracking().catch(err => {
+      console.warn('Hand tracking unavailable:', err);
+      statusEl.textContent = `🖱️ Мышь готова. Жесты недоступны: ${err.message}`;
+    });
+  } catch (err) {
+    statusEl.textContent = 'Ошибка загрузки: ' + err.message;
+    loadingEl.classList.add('hidden');
+    startBtn.hidden = false;
+  }
+}
+
+boot();
 animate();

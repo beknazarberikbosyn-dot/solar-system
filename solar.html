@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Солнечная система — Млечный Путь</title>
+  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="galaxy.css?v=11">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <video id="webcam" autoplay playsinline muted></video>
+  <canvas id="hand-overlay"></canvas>
+
+  <!-- Кнопка возврата в галактику -->
+  <a id="back-to-galaxy" href="index.html?from=solar">← Млечный Путь</a>
+
+  <div id="ui">
+    <h1>☀️ Солнечная система</h1>
+    <p id="mode-badge">Режим: загрузка</p>
+    <p id="status">Загрузка модели распознавания рук…</p>
+    <p id="planet-name">Планета: —</p>
+
+    <div class="controls">
+      <h2>Управление мышью</h2>
+      <ul>
+        <li><span>🖱️</span> Наведение — выбор планеты</li>
+        <li><span>🖱️</span> Клик — приближение / открыть информацию</li>
+        <li><span>✋</span> Перетаскивание — вращение системы</li>
+        <li><span>🔍</span> Колесо — приближение / отдаление</li>
+      </ul>
+      <h2>Управление жестами (камера)</h2>
+      <ul>
+        <li><span>☝️</span> Указательный палец — навести на планету</li>
+        <li><span>🤏</span> Щипок — приближение / информация</li>
+        <li><span>✌️</span> Знак мира — следующая планета (в карточке)</li>
+        <li><span>✊</span> Кулак — закрыть карточку, вернуться</li>
+        <li><span>✋</span> Открытая ладонь — вращение</li>
+      </ul>
+    </div>
+
+    <button id="start-btn" hidden>Разрешить камеру</button>
+  </div>
+
+  <!-- Bento-карточка с информацией о планете -->
+  <aside id="bento" class="hidden">
+    <div class="bento-header">
+      <img id="bento-img" src="" alt="">
+      <div>
+        <h2 id="bento-title">—</h2>
+        <p id="bento-subtitle">—</p>
+      </div>
+    </div>
+    <div class="bento-grid">
+      <div class="bento-cell wide">
+        <span class="label">Описание</span>
+        <p id="bento-desc">—</p>
+      </div>
+      <div class="bento-cell">
+        <span class="label">Диаметр</span>
+        <p id="bento-diameter">—</p>
+      </div>
+      <div class="bento-cell">
+        <span class="label">От Солнца</span>
+        <p id="bento-distance">—</p>
+      </div>
+      <div class="bento-cell">
+        <span class="label">Спутники</span>
+        <p id="bento-moons">—</p>
+      </div>
+      <div class="bento-cell">
+        <span class="label">Сутки</span>
+        <p id="bento-day">—</p>
+      </div>
+      <div class="bento-cell">
+        <span class="label">Год</span>
+        <p id="bento-year">—</p>
+      </div>
+    </div>
+    <div id="peace-bar">
+      <span id="peace-label">✌️ Покажите знак мира для переключения</span>
+      <div class="peace-track"><div id="peace-fill"></div></div>
+    </div>
+    <div class="bento-actions">
+      <button type="button" id="bento-next">→ Следующая планета</button>
+      <button type="button" id="bento-back">← Вернуться в систему</button>
+    </div>
+    <p class="bento-hint">Или: ✊ кулак — выход | ✌️ знак мира — след. планета</p>
+  </aside>
+
+  <div id="version-tag">…</div>
+  <div id="crosshair"></div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Инициализация…</p>
+  </div>
+
+  <!-- Оверлей гиперпрыжка (прибытие / отбытие на скорости света) -->
+  <canvas id="warp-overlay"></canvas>
+  <div id="warp-flash"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="app.js?v=11"></script>
+
+  <!-- Логика гиперпрыжка между галактикой и системой -->
+  <script>
+    (function () {
+      const warp = document.getElementById('warp-overlay');
+      const flash = document.getElementById('warp-flash');
+      const ctx = warp.getContext('2d');
+      let W = 0, H = 0, cx = 0, cy = 0;
+
+      function resize() {
+        W = warp.width = window.innerWidth;
+        H = warp.height = window.innerHeight;
+        cx = W / 2; cy = H / 2;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      // Полосы «звёздного тоннеля»
+      const streaks = [];
+      const N = 320;
+      for (let i = 0; i < N; i++) {
+        streaks.push({
+          angle: Math.random() * Math.PI * 2,
+          dist: Math.random() * Math.max(W, H) * 0.5,
+          speed: 6 + Math.random() * 14,
+          len: 40 + Math.random() * 160,
+          hue: 200 + Math.random() * 60,
+        });
+      }
+
+      function drawWarp(intensity) {
+        ctx.clearRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'lighter';
+        const maxR = Math.hypot(cx, cy) * 1.2;
+        for (const s of streaks) {
+          s.dist += s.speed * intensity;
+          if (s.dist > maxR) s.dist = Math.random() * 30;
+          const x1 = cx + Math.cos(s.angle) * s.dist;
+          const y1 = cy + Math.sin(s.angle) * s.dist;
+          const l = s.len * intensity * (0.4 + s.dist / maxR);
+          const x2 = cx + Math.cos(s.angle) * (s.dist + l);
+          const y2 = cy + Math.sin(s.angle) * (s.dist + l);
+          const a = Math.min(1, intensity) * (0.3 + 0.7 * (s.dist / maxR));
+          ctx.strokeStyle = `hsla(${s.hue}, 100%, 80%, ${a})`;
+          ctx.lineWidth = 1 + intensity * 2;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // ── Прибытие из галактики: тоннель тормозит и растворяется ──
+      const params = new URLSearchParams(location.search);
+      if (params.get('warp') === 'in' || params.get('from') === 'galaxy') {
+        warp.classList.add('active');
+        flash.classList.add('flash-in');
+        let t = 0;
+        const dur = 90;
+        (function arrive() {
+          t++;
+          const p = t / dur;
+          const intensity = (1 - p) * 1.6 + 0.05;
+          drawWarp(intensity);
+          warp.style.opacity = String(Math.max(0, 1 - p));
+          if (t < dur) requestAnimationFrame(arrive);
+          else {
+            warp.classList.remove('active');
+            warp.style.display = 'none';
+            ctx.clearRect(0, 0, W, H);
+          }
+        })();
+      } else {
+        warp.style.display = 'none';
+      }
+
+      // ── Отбытие обратно в галактику ──
+      const back = document.getElementById('back-to-galaxy');
+      back.addEventListener('click', function (e) {
+        e.preventDefault();
+        const href = back.getAttribute('href');
+        warp.classList.add('active');
+        warp.style.opacity = '1';
+        let t = 0;
+        const dur = 70;
+        (function depart() {
+          t++;
+          const p = t / dur;
+          const intensity = 0.1 + p * 2.2; // разгон
+          drawWarp(intensity);
+          if (p > 0.75) flash.classList.add('flash-out');
+          if (t < dur) requestAnimationFrame(depart);
+          else location.href = href;
+        })();
+      });
+    })();
+  </script>
+</body>
+</html>
