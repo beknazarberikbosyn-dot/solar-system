@@ -104,7 +104,7 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const APP_VERSION = 'v5';
+const APP_VERSION = 'v6';
 const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
 
@@ -271,7 +271,7 @@ function updateCameraPosition() {
   camera.lookAt(0, 0, 0);
 }
 
-function flyToPlanet(index) {
+function flyToPlanet(index, keepInfo = false) {
   const p = PLANETS[index];
   const mesh = planetMeshes[index];
   const pos = mesh.position.clone();
@@ -287,7 +287,7 @@ function flyToPlanet(index) {
   camState.flyProgress = 0;
   camState.lockedPlanet = index;
   planetNameEl.textContent = `Планета: ${p.name}`;
-  setMode(State.LOCKED);
+  setMode(keepInfo ? State.INFO : State.LOCKED);
 }
 
 function returnToSystem() {
@@ -406,7 +406,7 @@ function setMode(mode) {
 }
 
 // ─── Bento ────────────────────────────────────────────────────────────────────
-function openBento(index) {
+function fillBento(index) {
   const p = PLANETS[index];
   document.getElementById('bento-img').src = p.texture;
   document.getElementById('bento-title').textContent = p.name;
@@ -417,11 +417,23 @@ function openBento(index) {
   document.getElementById('bento-moons').textContent = p.info.moons;
   document.getElementById('bento-day').textContent = p.info.day;
   document.getElementById('bento-year').textContent = p.info.year;
+}
+
+function openBento(index) {
+  fillBento(index);
   bento.classList.remove('hidden');
   requestAnimationFrame(() => bento.classList.add('open'));
   uiPanel.classList.add('dimmed');
   setMode(State.INFO);
-  statusEl.textContent = '✊ Кулак — вернуться в систему';
+  statusEl.textContent = '✌️ Знак мира — след. планета | ✊ Кулак — выход';
+}
+
+function switchToNextPlanet() {
+  if (camState.flying || camState.lockedPlanet < 0) return;
+  const next = (camState.lockedPlanet + 1) % PLANETS.length;
+  fillBento(next);
+  setHighlight(next);
+  flyToPlanet(next, true);
 }
 
 function closeBento() {
@@ -435,6 +447,8 @@ let handLandmarker = null;
 let lastVideoTime = -1;
 let actionCooldown = 0;
 let pinchFrames = 0;
+let peaceFrames = 0;
+const PEACE_HOLD_FRAMES = 8;
 
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
@@ -458,6 +472,14 @@ function isOpenPalm(landmarks) {
 
 function isPinching(landmarks) {
   return dist2d(landmarks[4], landmarks[8]) < PINCH_THRESHOLD;
+}
+
+function isPeaceSign(landmarks) {
+  const indexUp = dist2d(landmarks[8], landmarks[0]) > dist2d(landmarks[6], landmarks[0]) * 1.1;
+  const middleUp = dist2d(landmarks[12], landmarks[0]) > dist2d(landmarks[10], landmarks[0]) * 1.1;
+  const ringDown = dist2d(landmarks[16], landmarks[0]) < dist2d(landmarks[14], landmarks[0]) * 1.1;
+  const pinkyDown = dist2d(landmarks[20], landmarks[0]) < dist2d(landmarks[18], landmarks[0]) * 1.1;
+  return indexUp && middleUp && ringDown && pinkyDown;
 }
 
 function updateCrosshair(x, y, hasTarget) {
@@ -500,13 +522,29 @@ function processHandGestures(landmarks) {
     const openPalm = isOpenPalm(landmarks);
     const pinching = isPinching(landmarks);
 
-    // ── INFO: кулак → возврат ──
+    // ── INFO: ✌️ → след. планета, ✊ → возврат ──
     if (appState === State.INFO) {
       if (fist && actionCooldown === 0) {
         actionCooldown = ACTION_COOLDOWN;
+        peaceFrames = 0;
         returnToSystem();
+        return;
       }
-      statusEl.textContent = '✊ Кулак — вернуться в систему';
+
+      if (isPeaceSign(landmarks) && !camState.flying) {
+        peaceFrames++;
+        if (peaceFrames >= PEACE_HOLD_FRAMES && actionCooldown === 0) {
+          peaceFrames = 0;
+          actionCooldown = ACTION_COOLDOWN;
+          switchToNextPlanet();
+          statusEl.textContent = `✌️ ${PLANETS[camState.lockedPlanet].name}`;
+        } else {
+          statusEl.textContent = '✌️ Держите знак мира — следующая планета';
+        }
+      } else {
+        peaceFrames = 0;
+        statusEl.textContent = '✌️ Знак мира — след. планета | ✊ Кулак — выход';
+      }
       return;
     }
 
@@ -565,6 +603,7 @@ function processHandGestures(landmarks) {
 
 function onHandLost() {
   pinchFrames = 0;
+  peaceFrames = 0;
   if (appState === State.SYSTEM) {
     clearHover();
     statusEl.textContent = 'Рука не обнаружена';
@@ -576,8 +615,9 @@ function drawHandSkeleton(landmarks) {
   const w = handCanvas.width, h = handCanvas.height;
   const pinching = isPinching(landmarks);
   const fist = isFist(landmarks);
+  const peace = isPeaceSign(landmarks);
 
-  handCtx.strokeStyle = pinching ? 'rgba(255,120,50,0.95)' : fist ? 'rgba(255,80,80,0.9)' : 'rgba(100,200,255,0.7)';
+  handCtx.strokeStyle = peace ? 'rgba(180,255,80,0.95)' : pinching ? 'rgba(255,120,50,0.95)' : fist ? 'rgba(255,80,80,0.9)' : 'rgba(100,200,255,0.7)';
   handCtx.lineWidth = 2;
   for (const [a, b] of HAND_CONNECTIONS) {
     handCtx.beginPath();
@@ -588,7 +628,7 @@ function drawHandSkeleton(landmarks) {
   for (const lm of landmarks) {
     handCtx.beginPath();
     handCtx.arc(lm.x * w, lm.y * h, 3, 0, Math.PI * 2);
-    handCtx.fillStyle = pinching ? '#ff6622' : fist ? '#ff4444' : '#66ccff';
+    handCtx.fillStyle = peace ? '#88ff44' : pinching ? '#ff6622' : fist ? '#ff4444' : '#66ccff';
     handCtx.fill();
   }
   if (pinching) {

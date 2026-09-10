@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Солнечная система — Hand Tracking</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <canvas id="scene"></canvas>
@@ -24,6 +24,7 @@
         <li><span>☝️</span> Указательный палец — навести на планету</li>
         <li><span>🤏</span> Щипок (большой + указательный) — приближение</li>
         <li><span>🤏</span> Щипок у планеты — открыть информацию</li>
+        <li><span>✌️</span> Знак мира — следующая планета (в карточке)</li>
         <li><span>✊</span> Кулак — закрыть карточку, вернуться</li>
         <li><span>✋</span> Открытая ладонь — вращение (режим системы)</li>
       </ul>
@@ -67,7 +68,7 @@
         <p id="bento-year">—</p>
       </div>
     </div>
-    <p class="bento-hint">✊ Сожмите кулак, чтобы вернуться</p>
+    <p class="bento-hint">✌️ Знак мира — следующая планета &nbsp;|&nbsp; ✊ Кулак — вернуться</p>
   </aside>
 
   <div id="crosshair"></div>
@@ -84,6 +85,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=5"></script>
+  <script type="module" src="app.js?v=6"></script>
 </body>
 </html>
