@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Солнечная система — Hand Tracking</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <canvas id="scene"></canvas>
@@ -68,9 +69,14 @@
         <p id="bento-year">—</p>
       </div>
     </div>
-    <p class="bento-hint">✌️ Знак мира — следующая планета &nbsp;|&nbsp; ✊ Кулак — вернуться</p>
+    <div id="peace-bar">
+      <span id="peace-label">✌️ Покажите знак мира для переключения</span>
+      <div class="peace-track"><div id="peace-fill"></div></div>
+    </div>
+    <p class="bento-hint">✊ Кулак — вернуться в систему</p>
   </aside>
 
+  <div id="version-tag">…</div>
   <div id="crosshair"></div>
 
   <div id="loading">
@@ -85,6 +91,6 @@
     }
   }
   </script>
-  <script type="module" src="app.js?v=6"></script>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>

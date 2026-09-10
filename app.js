@@ -13,6 +13,10 @@ const loadingEl = document.getElementById('loading');
 const crosshair = document.getElementById('crosshair');
 const uiPanel = document.getElementById('ui');
 const bento = document.getElementById('bento');
+const peaceBar = document.getElementById('peace-bar');
+const peaceFill = document.getElementById('peace-fill');
+const peaceLabel = document.getElementById('peace-label');
+const versionTag = document.getElementById('version-tag');
 const modeBadge = document.getElementById('mode-badge');
 
 const TEX = 'https://www.solarsystemscope.com/textures/download';
@@ -104,7 +108,7 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const APP_VERSION = 'v6';
+const APP_VERSION = 'v7';
 const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
 
@@ -448,7 +452,7 @@ let lastVideoTime = -1;
 let actionCooldown = 0;
 let pinchFrames = 0;
 let peaceFrames = 0;
-const PEACE_HOLD_FRAMES = 8;
+const PEACE_HOLD_FRAMES = 5;
 
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
@@ -475,11 +479,29 @@ function isPinching(landmarks) {
 }
 
 function isPeaceSign(landmarks) {
-  const indexUp = dist2d(landmarks[8], landmarks[0]) > dist2d(landmarks[6], landmarks[0]) * 1.1;
-  const middleUp = dist2d(landmarks[12], landmarks[0]) > dist2d(landmarks[10], landmarks[0]) * 1.1;
-  const ringDown = dist2d(landmarks[16], landmarks[0]) < dist2d(landmarks[14], landmarks[0]) * 1.1;
-  const pinkyDown = dist2d(landmarks[20], landmarks[0]) < dist2d(landmarks[18], landmarks[0]) * 1.1;
-  return indexUp && middleUp && ringDown && pinkyDown;
+  const indexUp = landmarks[8].y < landmarks[6].y;
+  const middleUp = landmarks[12].y < landmarks[10].y;
+  const ringDown = landmarks[16].y > landmarks[13].y;
+  const pinkyDown = landmarks[20].y > landmarks[17].y;
+  const spread = dist2d(landmarks[8], landmarks[12]) > 0.035;
+  const notPinch = dist2d(landmarks[4], landmarks[8]) > 0.045;
+  return indexUp && middleUp && ringDown && pinkyDown && spread && notPinch;
+}
+
+function updatePeaceUI(detected) {
+  if (!peaceBar) return;
+  if (detected) {
+    peaceBar.classList.add('active');
+    const pct = Math.min(100, (peaceFrames / PEACE_HOLD_FRAMES) * 100);
+    peaceFill.style.width = pct + '%';
+    peaceLabel.textContent = pct >= 100
+      ? '✌️ Переключение…'
+      : `✌️ Держите знак мира… ${Math.round(pct)}%`;
+  } else {
+    peaceBar.classList.remove('active');
+    peaceFill.style.width = '0%';
+    peaceLabel.textContent = '✌️ Покажите знак мира для переключения';
+  }
 }
 
 function updateCrosshair(x, y, hasTarget) {
@@ -531,15 +553,19 @@ function processHandGestures(landmarks) {
         return;
       }
 
-      if (isPeaceSign(landmarks) && !camState.flying) {
+      const peace = isPeaceSign(landmarks);
+      updatePeaceUI(peace);
+
+      if (peace && !camState.flying) {
         peaceFrames++;
         if (peaceFrames >= PEACE_HOLD_FRAMES && actionCooldown === 0) {
           peaceFrames = 0;
           actionCooldown = ACTION_COOLDOWN;
           switchToNextPlanet();
-          statusEl.textContent = `✌️ ${PLANETS[camState.lockedPlanet].name}`;
+          updatePeaceUI(false);
+          statusEl.textContent = `✌️ → ${PLANETS[camState.lockedPlanet].name}`;
         } else {
-          statusEl.textContent = '✌️ Держите знак мира — следующая планета';
+          statusEl.textContent = '✌️ Держите ✌️ — следующая планета';
         }
       } else {
         peaceFrames = 0;
@@ -727,6 +753,7 @@ Promise.all([
   initHandTracking(),
 ]).then(() => {
   setMode(State.SYSTEM);
+  if (versionTag) versionTag.textContent = APP_VERSION;
 }).catch(err => {
   statusEl.textContent = 'Ошибка: ' + err.message;
   loadingEl.classList.add('hidden');
