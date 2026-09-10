@@ -104,7 +104,8 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const State = { SYSTEM: 'system', AIMING: 'aiming', LOCKED: 'locked', INFO: 'info' };
+const APP_VERSION = 'v5';
+const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
 
 // ─── Three.js ───────────────────────────────────────────────────────────────
@@ -135,7 +136,6 @@ scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, 
 const textureLoader = new THREE.TextureLoader();
 const planetMeshes = [];
 const highlightRings = [];
-const raycaster = new THREE.Raycaster();
 
 function loadTexture(url, fallbackColor) {
   return new Promise(resolve => {
@@ -275,25 +275,26 @@ function flyToPlanet(index) {
   const p = PLANETS[index];
   const mesh = planetMeshes[index];
   const pos = mesh.position.clone();
-  const offset = p.radius * 5 + 4;
+  const offset = Math.max(p.radius * 2.2 + 2, 4);
 
   camState.flyFrom.copy(camera.position);
-  const dir = camera.position.clone().sub(pos).normalize();
-  if (dir.length() < 0.01) dir.set(0, 0.3, 1).normalize();
+  const dir = camera.position.clone().sub(pos);
+  if (dir.length() < 0.01) dir.set(0, 0.4, 1);
+  dir.normalize();
   camState.flyTo.copy(pos).add(dir.multiplyScalar(offset));
   camState.flyLookAt.copy(pos);
   camState.flying = true;
   camState.flyProgress = 0;
   camState.lockedPlanet = index;
   planetNameEl.textContent = `Планета: ${p.name}`;
+  setMode(State.LOCKED);
 }
 
 function returnToSystem() {
   closeBento();
-  setMode(State.SYSTEM);
   camState.lockedPlanet = -1;
-  lastAimedPlanet = -1;
-  pinchHoldFrames = 0;
+  aim.stickyPlanet = -1;
+  pinchFrames = 0;
 
   camState.flyFrom.copy(camera.position);
   const s = camState.savedOrbit;
@@ -313,23 +314,38 @@ function returnToSystem() {
   camState.targetElevation = s.elevation;
   camState.targetDistance = s.distance;
 
-  planetNameEl.textContent = 'Планета: —';
-  crosshair.classList.remove('locked');
   uiPanel.classList.remove('dimmed');
-  setHighlight(-1);
+  clearHover();
+  setMode(State.SYSTEM);
   statusEl.textContent = '✋ Открытая ладонь — вращение системы';
 }
 
-// ─── Raycast / выбор планеты ─────────────────────────────────────────────────
-let aimedPlanet = -1;
-let lastAimedPlanet = -1;
+// ─── Выбор планеты (экранные координаты + большая зона) ─────────────────────
+const PICK_RADIUS_MIN = 220;
+const AIM_SMOOTH = 0.28;
+const PINCH_THRESHOLD = 0.07;
+const PINCH_HOLD_FRAMES = 6;
+const ACTION_COOLDOWN = 50;
+
+const aim = { smoothX: 0, smoothY: 0, stickyPlanet: -1 };
+let hoveredPlanet = -1;
 const _proj = new THREE.Vector3();
 
 function fingerToScreen(landmarks) {
-  // Позиция указательного пальца → координаты экрана (зеркало камеры)
-  const x = (1 - landmarks[8].x) * window.innerWidth;
-  const y = landmarks[8].y * window.innerHeight;
+  const tip = landmarks[8];
+  const x = (1 - tip.x) * window.innerWidth;
+  const y = tip.y * window.innerHeight;
   return { x, y };
+}
+
+function updateAimPosition(screenX, screenY) {
+  if (!aim.smoothX && !aim.smoothY) {
+    aim.smoothX = screenX;
+    aim.smoothY = screenY;
+  } else {
+    aim.smoothX += (screenX - aim.smoothX) * AIM_SMOOTH;
+    aim.smoothY += (screenY - aim.smoothY) * AIM_SMOOTH;
+  }
 }
 
 function pickPlanetByScreen(screenX, screenY) {
@@ -343,7 +359,8 @@ function pickPlanetByScreen(screenX, screenY) {
     const sx = (_proj.x * 0.5 + 0.5) * window.innerWidth;
     const sy = (-_proj.y * 0.5 + 0.5) * window.innerHeight;
     const dist = Math.hypot(sx - screenX, sy - screenY);
-    const hitRadius = Math.max(35, PLANETS[i].radius * 14);
+    const screenSize = (PLANETS[i].radius / camState.distance) * window.innerHeight * 12;
+    const hitRadius = Math.max(PICK_RADIUS_MIN, screenSize + 40);
 
     if (dist < hitRadius && dist < bestDist) {
       bestDist = dist;
@@ -351,7 +368,25 @@ function pickPlanetByScreen(screenX, screenY) {
     }
   });
 
+  if (best >= 0) aim.stickyPlanet = best;
+  else if (aim.stickyPlanet >= 0) {
+    _proj.copy(planetMeshes[aim.stickyPlanet].position).project(camera);
+    if (_proj.z <= 1) {
+      const sx = (_proj.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-_proj.y * 0.5 + 0.5) * window.innerHeight;
+      if (Math.hypot(sx - screenX, sy - screenY) < PICK_RADIUS_MIN * 1.2) best = aim.stickyPlanet;
+    }
+  }
+
   return best;
+}
+
+function clearHover() {
+  hoveredPlanet = -1;
+  aim.stickyPlanet = -1;
+  crosshair.classList.remove('visible', 'has-target');
+  setHighlight(-1);
+  if (appState === State.SYSTEM) planetNameEl.textContent = 'Планета: —';
 }
 
 function setHighlight(index) {
@@ -363,14 +398,11 @@ function setHighlight(index) {
 function setMode(mode) {
   appState = mode;
   modeBadge.textContent = {
-    [State.SYSTEM]: 'Режим: обзор системы',
-    [State.AIMING]: 'Режим: прицеливание ☝️',
-    [State.LOCKED]: 'Режим: у планеты 🔒',
-    [State.INFO]: 'Режим: информация 📋',
+    [State.SYSTEM]: `Режим: обзор (${APP_VERSION})`,
+    [State.LOCKED]: `Режим: у планеты 🔒 (${APP_VERSION})`,
+    [State.INFO]: `Режим: информация 📋 (${APP_VERSION})`,
   }[mode] || mode;
-  modeBadge.className = mode === State.AIMING ? 'aiming'
-    : mode === State.LOCKED ? 'locked'
-    : mode === State.INFO ? 'info' : '';
+  modeBadge.className = mode === State.LOCKED ? 'locked' : mode === State.INFO ? 'info' : '';
 }
 
 // ─── Bento ────────────────────────────────────────────────────────────────────
@@ -401,11 +433,8 @@ function closeBento() {
 // ─── Hand Tracking ────────────────────────────────────────────────────────────
 let handLandmarker = null;
 let lastVideoTime = -1;
-let prevPinchDist = null;
-let snapCooldown = 0;
-let wasPointing = false;
-let pinchHoldFrames = 0;
-const PINCH_HOLD_THRESHOLD = 12;
+let actionCooldown = 0;
+let pinchFrames = 0;
 
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
@@ -417,143 +446,138 @@ function dist2d(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function dist3(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0));
-}
-
-function isFingerExtended(tip, pip, mcp) {
-  return dist3(tip, mcp) > dist3(pip, mcp) * 1.05;
-}
-
-function isPointing(landmarks) {
-  const indexExt = isFingerExtended(landmarks[8], landmarks[6], landmarks[5]);
-  const othersCur = [12, 16, 20].every(i =>
-    !isFingerExtended(landmarks[i], landmarks[i - 2], landmarks[i - 3])
-  );
-  return indexExt && othersCur;
-}
-
 function isFist(landmarks) {
-  return [8, 12, 16, 20].every(i =>
-    !isFingerExtended(landmarks[i], landmarks[i - 2], landmarks[i - 3])
-  );
+  return dist2d(landmarks[8], landmarks[0]) < dist2d(landmarks[5], landmarks[0]) * 1.1
+    && dist2d(landmarks[12], landmarks[0]) < dist2d(landmarks[9], landmarks[0]) * 1.1;
 }
 
 function isOpenPalm(landmarks) {
-  return [8, 12, 16, 20].every(i =>
-    isFingerExtended(landmarks[i], landmarks[i - 2], landmarks[i - 3])
-  );
+  return dist2d(landmarks[8], landmarks[0]) > dist2d(landmarks[5], landmarks[0]) * 1.3
+    && dist2d(landmarks[12], landmarks[0]) > dist2d(landmarks[9], landmarks[0]) * 1.2;
 }
 
-function detectSnap(landmarks) {
-  const d = dist3(landmarks[4], landmarks[8]);
-  let snapped = false;
-  if (prevPinchDist !== null && prevPinchDist > 0.08 && d < 0.04) snapped = true;
-  prevPinchDist = d;
-  return snapped;
+function isPinching(landmarks) {
+  return dist2d(landmarks[4], landmarks[8]) < PINCH_THRESHOLD;
+}
+
+function updateCrosshair(x, y, hasTarget) {
+  crosshair.style.left = x + 'px';
+  crosshair.style.top = y + 'px';
+  crosshair.classList.toggle('has-target', hasTarget);
+}
+
+function tryPinchAction(landmarks) {
+  if (actionCooldown > 0 || camState.flying) return;
+
+  if (isPinching(landmarks)) {
+    pinchFrames++;
+  } else {
+    pinchFrames = 0;
+    return;
+  }
+
+  if (pinchFrames < PINCH_HOLD_FRAMES) return;
+
+  pinchFrames = 0;
+  actionCooldown = ACTION_COOLDOWN;
+
+  if (appState === State.LOCKED) {
+    openBento(camState.lockedPlanet);
+    return;
+  }
+
+  if (appState === State.SYSTEM && hoveredPlanet >= 0) {
+    flyToPlanet(hoveredPlanet);
+    statusEl.textContent = `🚀 Приближение к ${PLANETS[hoveredPlanet].name}…`;
+  }
 }
 
 function processHandGestures(landmarks) {
-  if (snapCooldown > 0) snapCooldown--;
+  try {
+    if (actionCooldown > 0) actionCooldown--;
 
-  const pointing = isPointing(landmarks);
-  const fist = isFist(landmarks);
-  const screen = fingerToScreen(landmarks);
+    const fist = isFist(landmarks);
+    const openPalm = isOpenPalm(landmarks);
+    const pinching = isPinching(landmarks);
 
-  // ── INFO: кулак → возврат ──
-  if (appState === State.INFO) {
-    crosshair.style.left = screen.x + 'px';
-    crosshair.style.top = screen.y + 'px';
-    if (fist && snapCooldown === 0) {
-      snapCooldown = 30;
-      returnToSystem();
-    }
-    return;
-  }
-
-  // ── LOCKED: щелчок → bento ──
-  if (appState === State.LOCKED) {
-    crosshair.classList.add('visible', 'locked');
-    crosshair.style.left = screen.x + 'px';
-    crosshair.style.top = screen.y + 'px';
-
-    if (detectSnap(landmarks) && snapCooldown === 0) {
-      snapCooldown = 40;
-      openBento(camState.lockedPlanet);
-      statusEl.textContent = '✊ Кулак — вернуться в систему';
-    } else {
-      statusEl.textContent = '👌 Щелчок пальцами — открыть информацию';
-    }
-    return;
-  }
-
-  // ── AIMING: луч по указательному ──
-  if (appState === State.AIMING) {
-    crosshair.classList.add('visible');
-    crosshair.classList.remove('locked');
-    crosshair.style.left = screen.x + 'px';
-    crosshair.style.top = screen.y + 'px';
-
-    aimedPlanet = raycastPlanet(screen.x, screen.y);
-    setHighlight(aimedPlanet);
-
-    if (aimedPlanet >= 0) {
-      planetNameEl.textContent = `→ ${PLANETS[aimedPlanet].name}`;
-      statusEl.textContent = '☝️ Уберите палец, чтобы зафиксировать';
-    } else {
-      statusEl.textContent = '☝️ Наведите на планету';
-    }
-
-    if (!pointing) {
-      if (aimedPlanet >= 0) {
-        lockedSelection = aimedPlanet;
-        appState = State.LOCKED;
-        flyToPlanet(aimedPlanet);
-        crosshair.classList.add('locked');
-        statusEl.textContent = '🚀 Приближение…';
-      } else {
-        appState = State.SYSTEM;
-        crosshair.classList.remove('visible');
-        setHighlight(-1);
-        statusEl.textContent = '✋ Открытая ладонь — вращение системы';
+    // ── INFO: кулак → возврат ──
+    if (appState === State.INFO) {
+      if (fist && actionCooldown === 0) {
+        actionCooldown = ACTION_COOLDOWN;
+        returnToSystem();
       }
+      statusEl.textContent = '✊ Кулак — вернуться в систему';
+      return;
     }
-    return;
+
+    // ── LOCKED: щипок → bento ──
+    if (appState === State.LOCKED) {
+      tryPinchAction(landmarks);
+      statusEl.textContent = pinching
+        ? '🤏 Держите щипок — открыть информацию'
+        : '🤏 Сожмите большой и указательный — информация';
+      return;
+    }
+
+    // ── SYSTEM: указательный → выбор, щипок → полёт ──
+    if (!camState.flying && !openPalm && !fist) {
+      const screen = fingerToScreen(landmarks);
+      updateAimPosition(screen.x, screen.y);
+      crosshair.classList.add('visible');
+      updateCrosshair(aim.smoothX, aim.smoothY, false);
+
+      hoveredPlanet = pickPlanetByScreen(aim.smoothX, aim.smoothY);
+      setHighlight(hoveredPlanet);
+
+      if (hoveredPlanet >= 0) {
+        crosshair.classList.add('has-target');
+        planetNameEl.textContent = `→ ${PLANETS[hoveredPlanet].name}`;
+        statusEl.textContent = pinching
+          ? '🤏 Держите щипок — приближение'
+          : `☝️ ${PLANETS[hoveredPlanet].name} — сожмите пальцы для полёта`;
+      } else {
+        statusEl.textContent = pinching
+          ? '🤏 Наведите на планету и сожмите пальцы'
+          : '☝️ Наведите указательный на планету';
+      }
+
+      tryPinchAction(landmarks);
+    } else if (openPalm && !camState.flying) {
+      clearHover();
+      const palm = landmarks[9];
+      camState.targetAzimuth = (0.5 - palm.x) * Math.PI * 1.5;
+      camState.targetElevation = THREE.MathUtils.clamp((0.5 - palm.y) * 1.2 + 0.3, -0.3, 1.2);
+      camState.savedOrbit.azimuth = camState.targetAzimuth;
+      camState.savedOrbit.elevation = camState.targetElevation;
+      camState.savedOrbit.distance = camState.targetDistance;
+      statusEl.textContent = '✋ Открытая ладонь — вращение';
+      pinchFrames = 0;
+    } else if (!camState.flying) {
+      clearHover();
+      statusEl.textContent = '☝️ Укажите пальцем или ✋ ладонь для вращения';
+      pinchFrames = 0;
+    }
+  } catch (err) {
+    console.error('Gesture error:', err);
+    statusEl.textContent = 'Ошибка жеста — попробуйте снова';
   }
+}
 
-  // ── SYSTEM ──
-  crosshair.classList.remove('visible', 'locked');
-
-  if (pointing && !camState.flying) {
-    appState = State.AIMING;
-    wasPointing = true;
-    statusEl.textContent = '☝️ Наведите на планету';
-    return;
+function onHandLost() {
+  pinchFrames = 0;
+  if (appState === State.SYSTEM) {
+    clearHover();
+    statusEl.textContent = 'Рука не обнаружена';
   }
-
-  if (isOpenPalm(landmarks) && !camState.flying) {
-    const palm = landmarks[9];
-    camState.targetAzimuth = (0.5 - palm.x) * Math.PI * 1.5;
-    camState.targetElevation = THREE.MathUtils.clamp((0.5 - palm.y) * 1.2 + 0.3, -0.3, 1.2);
-    camState.savedOrbit.azimuth = camState.targetAzimuth;
-    camState.savedOrbit.elevation = camState.targetElevation;
-    camState.savedOrbit.distance = camState.targetDistance;
-    statusEl.textContent = '✋ Вращение системы';
-  } else if (!camState.flying) {
-    statusEl.textContent = '☝️ Укажите пальцем на планету';
-  }
-
-  wasPointing = false;
-  prevPinchDist = null;
 }
 
 function drawHandSkeleton(landmarks) {
   handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
   const w = handCanvas.width, h = handCanvas.height;
-  const pointing = isPointing(landmarks);
+  const pinching = isPinching(landmarks);
   const fist = isFist(landmarks);
 
-  handCtx.strokeStyle = pointing ? 'rgba(255,200,50,0.9)' : fist ? 'rgba(255,80,80,0.9)' : 'rgba(100,200,255,0.7)';
+  handCtx.strokeStyle = pinching ? 'rgba(255,120,50,0.95)' : fist ? 'rgba(255,80,80,0.9)' : 'rgba(100,200,255,0.7)';
   handCtx.lineWidth = 2;
   for (const [a, b] of HAND_CONNECTIONS) {
     handCtx.beginPath();
@@ -564,8 +588,15 @@ function drawHandSkeleton(landmarks) {
   for (const lm of landmarks) {
     handCtx.beginPath();
     handCtx.arc(lm.x * w, lm.y * h, 3, 0, Math.PI * 2);
-    handCtx.fillStyle = pointing ? '#ffcc00' : fist ? '#ff4444' : '#66ccff';
+    handCtx.fillStyle = pinching ? '#ff6622' : fist ? '#ff4444' : '#66ccff';
     handCtx.fill();
+  }
+  if (pinching) {
+    handCtx.beginPath();
+    handCtx.arc(landmarks[4].x * w, landmarks[4].y * h, 8, 0, Math.PI * 2);
+    handCtx.strokeStyle = '#ff6622';
+    handCtx.lineWidth = 2;
+    handCtx.stroke();
   }
 }
 
@@ -595,7 +626,7 @@ async function startCamera() {
   handCanvas.width = 200;
   handCanvas.height = 150;
   startBtn.hidden = true;
-  statusEl.textContent = '☝️ Укажите пальцем на планету';
+  statusEl.textContent = `☝️ Наведите палец → 🤏 щипок для полёта (${APP_VERSION})`;
   detectHands();
 }
 
@@ -612,12 +643,7 @@ function detectHands() {
       processHandGestures(result.landmarks[0]);
     } else {
       handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
-      if (appState === State.AIMING) {
-        appState = State.SYSTEM;
-        crosshair.classList.remove('visible');
-        setHighlight(-1);
-      }
-      statusEl.textContent = 'Рука не обнаружена';
+      onHandLost();
     }
   }
   requestAnimationFrame(detectHands);
@@ -659,7 +685,9 @@ window.addEventListener('resize', () => {
 Promise.all([
   createPlanets(),
   initHandTracking(),
-]).catch(err => {
+]).then(() => {
+  setMode(State.SYSTEM);
+}).catch(err => {
   statusEl.textContent = 'Ошибка: ' + err.message;
   loadingEl.classList.add('hidden');
 });
