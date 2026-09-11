@@ -8,7 +8,7 @@ const flash = document.getElementById('warp-flash');
 const statusEl = document.getElementById('gx-status');
 const loadingEl = document.getElementById('loading');
 const infoPanel = document.getElementById('gx-info');
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v16';
 const IMG_FALLBACK = 'https://images-assets.nasa.gov/image/PIA06968/PIA06968~medium.jpg';
 const NASA = (id) => `https://images-assets.nasa.gov/image/${id}/${id}~medium.jpg`;
 const WIKI = (file, w = 1280) =>
@@ -51,7 +51,7 @@ const OBJECTS = [
   {
     id: 'proxima', name: 'Проксима Центавра', kind: 'star',
     r: 0.605, a: 22, y: 1.2, color: 0xff6644, size: 2.0,
-    image: NASA('PIA16884'),
+    image: NASA('PIA18904'),
     imageCredit: 'NASA / ESA / STScI',
     type: 'Красный карлик · ближайшая звезда',
     desc: 'Ближайшая к Солнцу звезда. Красный карлик с планетой Proxima b в зоне обитаемости. Свет от неё летит к нам более 4 лет.',
@@ -61,7 +61,7 @@ const OBJECTS = [
   {
     id: 'sirius', name: 'Сириус', kind: 'star',
     r: 0.62, a: 33, y: 2.0, color: 0xcfe6ff, size: 2.4,
-    image: NASA('PIA12348'),
+    image: NASA('PIA21430'),
     imageCredit: 'NASA / ESA / Hubble',
     type: 'Ярчайшая звезда неба',
     desc: 'Самая яркая звезда ночного неба. Двойная система: бело-голубой Сириус A и белый карлик Сириус B.',
@@ -150,7 +150,7 @@ const OBJECTS = [
   },
   {
     id: 'omega-cen', name: 'Омега Центавра', kind: 'cluster',
-    r: 0.95, a: 230, y: 28.0, color: 0xfff0c0, size: 4.8,
+    r: 0.82, a: 230, y: 18.0, color: 0xfff0c0, size: 8.5,
     image: NASA('PIA09178'),
     imageCredit: 'NASA / ESA / Hubble',
     type: 'Шаровое скопление (ω Cen)',
@@ -431,58 +431,240 @@ function objectWorldPos(o) {
   return new THREE.Vector3(Math.cos(a) * rad, o.y, Math.sin(a) * rad);
 }
 
-function photoScale(o) {
-  if (o.kind === 'nebula') return o.size * 7.5;
-  if (o.kind === 'cluster') return o.size * 6.2;
-  if (o.kind === 'core') return o.size * 5.5;
-  if (o.kind === 'system') return o.size * 4.2;
-  return o.size * 3.6;
+function modelSize(o) {
+  if (o.kind === 'nebula') return o.size * 9.5;
+  if (o.kind === 'cluster') return o.size * 7.5;
+  if (o.kind === 'core') return o.size * 8;
+  if (o.kind === 'system') return o.size * 4.5;
+  if (o.kind === 'star') return o.size * 4.2;
+  return o.size * 5;
 }
 
-function makePhotoGroup(o, tex) {
-  const group = new THREE.Group();
-  group.position.copy(o.pos);
+function imageToCloudTexture(image, color) {
+  const srcW = image.width || 512;
+  const srcH = image.height || 512;
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const scale = Math.max(size / srcW, size / srcH);
+  const dw = srcW * scale;
+  const dh = srcH * scale;
+  ctx.drawImage(image, (size - dw) / 2, (size - dh) / 2, dw, dh);
 
-  const img = tex.image;
-  const aspect = (img && img.width && img.height) ? img.width / img.height : 1.4;
-  const w = photoScale(o);
-  const h = w / aspect;
-  const geo = new THREE.PlaneGeometry(w, h);
+  const data = ctx.getImageData(0, 0, size, size);
+  const px = data.data;
+  const col = new THREE.Color(color);
+  const cr = col.r * 255, cg = col.g * 255, cb = col.b * 255;
+  for (let i = 0; i < px.length; i += 4) {
+    const lum = (px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11) / 255;
+    const nx = (i / 4) % size / size * 2 - 1;
+    const ny = Math.floor(i / 4 / size) / size * 2 - 1;
+    const edge = Math.max(0, 1 - Math.hypot(nx, ny));
+    px[i] = Math.min(255, px[i] * 0.75 + cr * 0.25);
+    px[i + 1] = Math.min(255, px[i + 1] * 0.75 + cg * 0.25);
+    px[i + 2] = Math.min(255, px[i + 2] * 0.75 + cb * 0.25);
+    px[i + 3] = Math.min(255, lum * 255 * Math.pow(edge, 0.45) * 1.35);
+  }
+  ctx.putImageData(data, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
-  const mat = new THREE.MeshBasicMaterial({
-    map: tex,
-    transparent: true,
-    opacity: o.kind === 'nebula' ? 0.92 : 0.88,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
+function reconstructGlobularFromPhoto(image, radius, maxStars = 38000) {
+  const sample = 280;
+  const c = document.createElement('canvas');
+  c.width = c.height = sample;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const srcW = image.width || sample;
+  const srcH = image.height || sample;
+  const cover = Math.max(sample / srcW, sample / srcH);
+  ctx.drawImage(image, (sample - srcW * cover) / 2, (sample - srcH * cover) / 2, srcW * cover, srcH * cover);
+  const px = ctx.getImageData(0, 0, sample, sample).data;
 
-  const main = new THREE.Mesh(geo, mat);
-  group.add(main);
-
-  if (o.kind === 'nebula' || o.kind === 'cluster') {
-    const sideMat = mat.clone();
-    sideMat.opacity = 0.38;
-    const side = new THREE.Mesh(geo, sideMat);
-    side.rotation.y = Math.PI / 2;
-    group.add(side);
-
-    const tiltMat = mat.clone();
-    tiltMat.opacity = 0.22;
-    const tilt = new THREE.Mesh(geo, tiltMat);
-    tilt.rotation.y = Math.PI / 4;
-    tilt.rotation.x = 0.25;
-    group.add(tilt);
+  const candidates = [];
+  for (let y = 0; y < sample; y++) {
+    for (let x = 0; x < sample; x++) {
+      const i = (y * sample + x) * 4;
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
+      if (lum < 0.07) continue;
+      const nx = ((x + 0.5) / sample) * 2 - 1;
+      const ny = 1 - ((y + 0.5) / sample) * 2;
+      if (nx * nx + ny * ny > 0.98) continue;
+      candidates.push({ nx, ny, lum, r, g, b });
+    }
   }
 
-  const outward = o.pos.clone();
-  if (outward.lengthSq() < 0.01) outward.set(0, 0.2, 1);
-  group.lookAt(outward.clone().add(o.pos));
+  const positions = [];
+  const colors = [];
+  const sizes = [];
+  const extra = Math.max(1, Math.ceil(maxStars / Math.max(1, candidates.length)));
+
+  for (const p of candidates) {
+    const copies = p.lum > 0.55 ? extra + 1 : extra;
+    const chord = Math.sqrt(Math.max(0.0001, 1 - p.nx * p.nx - p.ny * p.ny));
+    for (let n = 0; n < copies && positions.length / 3 < maxStars; n++) {
+      const jitter = 0.012 * (1 - p.lum);
+      const x = (p.nx + (Math.random() - 0.5) * jitter) * radius;
+      const y = (p.ny + (Math.random() - 0.5) * jitter) * radius;
+      const z = (Math.random() * 2 - 1) * chord * radius;
+      positions.push(x, y, z);
+      const boost = 0.55 + p.lum * 0.7;
+      colors.push(
+        Math.min(1, (p.r / 255) * boost),
+        Math.min(1, (p.g / 255) * boost),
+        Math.min(1, (p.b / 255) * boost)
+      );
+      sizes.push(0.18 + p.lum * 0.7);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+  return geo;
+}
+
+function buildOmegaCentauri(o, image) {
+  const group = new THREE.Group();
+  group.position.copy(o.pos);
+  const radius = 22;
+  const geo = reconstructGlobularFromPhoto(image, radius);
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.42,
+    vertexColors: true,
+    transparent: true,
+    opacity: 1,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    map: glowSprite(0xfff4d6),
+    sizeAttenuation: true,
+  });
+  const stars = new THREE.Points(geo, mat);
+  group.add(stars);
 
   o.photoGroup = group;
-  o.photoWidth = w;
+  o.photoWidth = radius * 2.2;
+  o.reconstructed = true;
+  o.spinMesh = stars;
   if (o.core) o.core.visible = false;
+  if (o.sprite) o.sprite.visible = false;
+  scene.add(group);
+}
+
+function addStarField(group, count, radius, color) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const r = Math.pow(Math.random(), 0.55) * radius;
+    const t = Math.random() * Math.PI * 2;
+    const p = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+    pos[i * 3 + 1] = r * Math.cos(p);
+    pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  group.add(new THREE.Points(g, new THREE.PointsMaterial({
+    color, size: 0.55, transparent: true, opacity: 0.9,
+    depthWrite: false, blending: THREE.AdditiveBlending, map: glowSprite(color),
+  })));
+}
+
+function buildObjectModel(o, photoTex) {
+  if (o.kind === 'blackhole') return;
+  if (o.id === 'omega-cen' && photoTex?.image) {
+    buildOmegaCentauri(o, photoTex.image);
+    return;
+  }
+
+  const group = new THREE.Group();
+  group.position.copy(o.pos);
+  const s = modelSize(o);
+
+  if (o.kind === 'star') {
+    const mat = new THREE.MeshBasicMaterial({
+      map: photoTex || null,
+      color: photoTex ? 0xffffff : o.color,
+    });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(s * 0.38, 48, 48), mat);
+    group.add(body);
+    const corona = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite(o.color), transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, opacity: 0.85,
+    }));
+    corona.scale.set(s * 2.4, s * 2.4, 1);
+    group.add(corona);
+    o.spinMesh = body;
+  } else if (o.kind === 'cluster' || o.kind === 'core') {
+    const wrap = new THREE.Mesh(
+      new THREE.SphereGeometry(s * 0.42, 48, 48),
+      new THREE.MeshBasicMaterial({
+        map: photoTex || null,
+        color: photoTex ? 0xffffff : o.color,
+        transparent: true,
+        opacity: 0.92,
+      })
+    );
+    group.add(wrap);
+    addStarField(group, o.kind === 'core' ? 900 : 1400, s * 0.7, o.color);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite(o.color), transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, opacity: 0.45,
+    }));
+    halo.scale.set(s * 2.1, s * 2.1, 1);
+    group.add(halo);
+    o.spinMesh = wrap;
+  } else if (o.kind === 'system') {
+    const sun = new THREE.Mesh(
+      new THREE.SphereGeometry(s * 0.22, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffdd66 })
+    );
+    group.add(sun);
+    const orbit = new THREE.Mesh(
+      new THREE.RingGeometry(s * 0.4, s * 0.55, 48),
+      new THREE.MeshBasicMaterial({ color: 0xffe08a, side: THREE.DoubleSide, transparent: true, opacity: 0.35 })
+    );
+    orbit.rotation.x = Math.PI / 2.4;
+    group.add(orbit);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowSprite(o.color), transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, opacity: 0.7,
+    }));
+    halo.scale.set(s * 1.8, s * 1.8, 1);
+    group.add(halo);
+  } else {
+    const cloudTex = photoTex ? imageToCloudTexture(photoTex.image, o.color) : glowSprite(o.color);
+    const mat = new THREE.MeshBasicMaterial({
+      map: cloudTex,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const aspect = photoTex?.image ? (photoTex.image.width / photoTex.image.height) : 1.3;
+    const w = s;
+    const h = s / Math.max(0.7, Math.min(aspect, 1.8));
+    const geo = new THREE.PlaneGeometry(w, h);
+    for (let i = 0; i < 5; i++) {
+      const plane = new THREE.Mesh(geo, i === 0 ? mat : mat.clone());
+      plane.material.opacity = i === 0 ? 0.95 : 0.38;
+      plane.rotation.y = (i / 5) * Math.PI;
+      plane.rotation.x = (i % 2) * 0.18;
+      group.add(plane);
+    }
+    addStarField(group, 220, s * 0.45, o.color);
+    o.spinMesh = group;
+  }
+
+  o.photoGroup = group;
+  o.photoWidth = s;
+  if (o.core) o.core.visible = false;
+  if (o.sprite) o.sprite.visible = false;
   scene.add(group);
 }
 
@@ -490,17 +672,25 @@ function loadObjectPhotos() {
   const loader = new THREE.TextureLoader();
   loader.setCrossOrigin('anonymous');
   return Promise.all(OBJECTS.map((o) => new Promise((resolve) => {
-    if (o.kind === 'blackhole' || !o.image) { resolve(); return; }
+    if (o.kind === 'blackhole') { resolve(); return; }
+    if (!o.image) {
+      buildObjectModel(o, null);
+      resolve();
+      return;
+    }
     loader.load(
       o.image,
       (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.minFilter = THREE.LinearFilter;
-        makePhotoGroup(o, tex);
+        buildObjectModel(o, tex);
         resolve();
       },
       undefined,
-      () => resolve()
+      () => {
+        buildObjectModel(o, null);
+        resolve();
+      }
     );
   })));
 }
@@ -533,7 +723,7 @@ function buildObjects() {
 
     // HTML-подпись
     const el = document.createElement('button');
-    el.className = 'gx-label' + (o.solar ? ' solar' : '') + (o.kind === 'blackhole' ? ' bh' : '');
+    el.className = 'gx-label' + (o.solar ? ' solar' : '') + (o.kind === 'blackhole' ? ' bh' : '') + (o.id === 'omega-cen' ? ' omega' : '');
     el.innerHTML = `<span class="dot" style="--c:#${o.color.toString(16).padStart(6, '0')}"></span><span class="txt">${o.name}</span>`;
     el.addEventListener('click', (e) => { e.stopPropagation(); jumpTo(o); });
     el.addEventListener('mouseenter', () => setHover(o));
@@ -605,7 +795,7 @@ function pickObject(x, y) {
   screenToNdc(x, y);
   raycaster.setFromCamera(pointer, camera);
   // приоритет — по экранной близости к точкам
-  let best = null, bestD = 60;
+  let best = null, bestD = 90;
   for (const o of OBJECTS) {
     const p = o.pos.clone().project(camera);
     if (p.z > 1) continue;
@@ -694,7 +884,7 @@ function jumpTo(o) {
 
   // Куда летим
   cam.tTarget.copy(o.pos);
-  warpState.toDist = o.solar ? 26 : Math.max((o.photoWidth || o.size * 8) * 1.15, 18);
+  warpState.toDist = o.solar ? 26 : Math.max((o.photoWidth || modelSize(o)) * 1.35, 22);
   warpState.toAz = cam.azimuth + 0.5;
   warpState.toEl = 0.3;
 
@@ -813,14 +1003,15 @@ function animate() {
 
   // пульсация точек и лёгкое «дыхание» туманностей
   for (const o of OBJECTS) {
-    const s = o.size * 2.4 * (1 + Math.sin(t * 2 + o.a) * 0.06) * (hovered === o ? 1.5 : 1);
-    o.sprite.scale.set(s, s, 1);
+    if (o.sprite) {
+      const pulse = o.size * 2.4 * (1 + Math.sin(t * 2 + o.a) * 0.06) * (hovered === o ? 1.5 : 1);
+      o.sprite.scale.set(pulse, pulse, 1);
+      o.sprite.visible = !o.photoGroup && o.kind !== 'blackhole';
+    }
     if (o.photoGroup) {
-      const pulse = 1 + Math.sin(t * 0.4 + o.a) * 0.03;
-      o.photoGroup.scale.setScalar(pulse);
-      o.photoGroup.rotation.y += dt * (o.kind === 'nebula' ? 0.05 : 0.02);
-      const dist = camera.position.distanceTo(o.pos);
-      o.sprite.visible = dist > (o.photoWidth || 20) * 1.8;
+      const breathe = 1 + Math.sin(t * 0.35 + o.a) * 0.025;
+      o.photoGroup.scale.setScalar(breathe * (hovered === o ? 1.08 : 1));
+      if (o.spinMesh) o.spinMesh.rotation.y += dt * (o.kind === 'nebula' ? 0.08 : 0.15);
     }
   }
 
@@ -869,11 +1060,10 @@ blackHole = buildBlackHole();
 buildObjects();
 loadObjectPhotos().then(() => {
   if (loadingEl) loadingEl.classList.add('hidden');
-  statusEl.textContent = 'Кликните на объект — прыжок к 3D-снимку Hubble / JWST.';
+  statusEl.textContent = 'Кликни «Омега Центавра» — 3D-шар звёзд по снимку Hubble.';
 });
 arrivalIntro();
 animate();
 
-if (loadingEl) loadingEl.classList.add('hidden');
 const vt = document.getElementById('version-tag');
 if (vt) vt.textContent = APP_VERSION;
