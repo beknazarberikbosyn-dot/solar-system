@@ -8,9 +8,11 @@ const flash = document.getElementById('warp-flash');
 const statusEl = document.getElementById('gx-status');
 const loadingEl = document.getElementById('loading');
 const infoPanel = document.getElementById('gx-info');
-const APP_VERSION = 'v13';
-const IMG_FALLBACK = 'https://images-assets.nasa.gov/image/PIA06968/PIA06968~orig.jpg';
-const NASA = (id) => `https://images-assets.nasa.gov/image/${id}/${id}~orig.jpg`;
+const APP_VERSION = 'v14';
+const IMG_FALLBACK = 'https://images-assets.nasa.gov/image/PIA06968/PIA06968~medium.jpg';
+const NASA = (id) => `https://images-assets.nasa.gov/image/${id}/${id}~medium.jpg`;
+const WIKI = (file, w = 1280) =>
+  `https://upload.wikimedia.org/wikipedia/commons/thumb/${file}/${w}px-${file.split('/').pop()}`;
 
 // ─── Ключевые объекты Млечного Пути ──────────────────────────────────────────
 // r — доля радиуса диска (0 = центр), a — угол на диске (°), y — высота над плоскостью
@@ -49,7 +51,7 @@ const OBJECTS = [
   {
     id: 'proxima', name: 'Проксима Центавра', kind: 'star',
     r: 0.605, a: 22, y: 1.2, color: 0xff6644, size: 2.0,
-    image: NASA('PIA23457'),
+    image: NASA('PIA16884'),
     imageCredit: 'NASA / ESA / STScI',
     type: 'Красный карлик · ближайшая звезда',
     desc: 'Ближайшая к Солнцу звезда. Красный карлик с планетой Proxima b в зоне обитаемости. Свет от неё летит к нам более 4 лет.',
@@ -59,7 +61,7 @@ const OBJECTS = [
   {
     id: 'sirius', name: 'Сириус', kind: 'star',
     r: 0.62, a: 33, y: 2.0, color: 0xcfe6ff, size: 2.4,
-    image: NASA('PIA04204'),
+    image: NASA('PIA12348'),
     imageCredit: 'NASA / ESA / Hubble',
     type: 'Ярчайшая звезда неба',
     desc: 'Самая яркая звезда ночного неба. Двойная система: бело-голубой Сириус A и белый карлик Сириус B.',
@@ -99,7 +101,7 @@ const OBJECTS = [
   {
     id: 'pleiades', name: 'Плеяды (M45)', kind: 'cluster',
     r: 0.64, a: 58, y: 4.0, color: 0x9fc4ff, size: 3.0,
-    image: NASA('PIA06176'),
+    image: WIKI('4/4e/Pleiades_large.jpg', 960),
     imageCredit: 'NASA / ESA / AURA / Caltech',
     type: 'Рассеянное звёздное скопление',
     desc: 'Молодые голубые звёзды, окутанные туманностью. Видны невооружённым глазом как «Семь сестёр».',
@@ -109,7 +111,7 @@ const OBJECTS = [
   {
     id: 'orion-neb', name: 'Туманность Ориона', kind: 'nebula',
     r: 0.68, a: 52, y: -3.5, color: 0xff88cc, size: 4.2,
-    image: NASA('PIA08235'),
+    image: WIKI('f/f3/Orion_Nebula_-_Hubble_2006_mosaic_18000.jpg', 1280),
     imageCredit: 'NASA / ESA / M. Robberto',
     type: 'Область звездообразования (M42)',
     desc: 'Ближайший к нам «звёздный роддом» — гигантское облако газа, где прямо сейчас рождаются новые звёзды и планеты.',
@@ -129,7 +131,7 @@ const OBJECTS = [
   {
     id: 'eagle', name: 'Столпы Творения', kind: 'nebula',
     r: 0.42, a: 95, y: -5.0, color: 0xffbb66, size: 4.4,
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg/960px-Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg',
+    image: NASA('PIA25431'),
     imageCredit: 'NASA / ESA / Hubble',
     type: 'Туманность Орла (M16)',
     desc: 'Знаменитые «Столпы Творения» — колонны газа и пыли высотой в световые годы, где формируются новые звёзды. Прославлены снимком «Хаббла».',
@@ -139,7 +141,7 @@ const OBJECTS = [
   {
     id: 'carina', name: 'Туманность Киля', kind: 'nebula',
     r: 0.38, a: 200, y: 4.0, color: 0xff99aa, size: 4.6,
-    image: NASA('PIA09176'),
+    image: NASA('PIA23646'),
     imageCredit: 'NASA / ESA / Hubble',
     type: 'Область η Киля (NGC 3372)',
     desc: 'Одна из крупнейших туманностей неба. Внутри — Эта Киля, гипергигант, который может взорваться как гиперновая.',
@@ -155,6 +157,76 @@ const OBJECTS = [
     desc: 'Крупнейшее шаровое скопление Галактики — почти 10 миллионов звёзд в шаре. Возможно, ядро поглощённой карликовой галактики.',
     distEarth: '≈ 17 000 св. лет', distCenter: '≈ 21 000 св. лет',
     extra: 'Возраст ≈ 12 млрд лет',
+  },
+  {
+    id: 'horsehead', name: 'Конская Голова', kind: 'nebula',
+    r: 0.67, a: 55, y: -2.2, color: 0xff7744, size: 3.8,
+    image: NASA('PIA01322'),
+    imageCredit: 'NASA / ESA / Hubble',
+    type: 'Тёмная туманность (Barnard 33)',
+    desc: 'Силуэт пылевого облака на фоне светящегося газа — одно из самых узнаваемых изображений космоса. Находится в созвездии Ориона.',
+    distEarth: '≈ 1 375 св. лет', distCenter: '≈ 26 000 св. лет',
+    extra: '«Голова» ≈ 3,5 св. года в поперечнике',
+  },
+  {
+    id: 'helix', name: 'Туманность Улитка', kind: 'nebula',
+    r: 0.55, a: 310, y: -4.0, color: 0x66ddff, size: 4.0,
+    image: NASA('PIA15420'),
+    imageCredit: 'NASA / JPL-Caltech / ESA',
+    type: 'Планетарная туманность (NGC 7293)',
+    desc: 'Остаток умирающей звезды, похожий на глаз. То, чем Солнце станет через миллиарды лет, сбросив внешние слои.',
+    distEarth: '≈ 650 св. лет', distCenter: '≈ 26 000 св. лет',
+    extra: 'Ближайшая к нам планетарная туманность',
+  },
+  {
+    id: 'south-ring', name: 'Южное Кольцо', kind: 'nebula',
+    r: 0.48, a: 175, y: 5.5, color: 0xaad4ff, size: 3.9,
+    image: NASA('PIA23645'),
+    imageCredit: 'NASA / ESA / CSA / JWST',
+    type: 'Планетарная туманность (NGC 3132)',
+    desc: 'Снимок «Джеймса Уэбба»: две звезды в центре и слои сброшенного газа. Видны пыль и молекулярный водород, невидимые для обычных телескопов.',
+    distEarth: '≈ 2 000 св. лет', distCenter: '≈ 25 000 св. лет',
+    extra: 'Диаметр ≈ 0,5 св. года',
+  },
+  {
+    id: 'rho-oph', name: 'Ро Офиуха', kind: 'nebula',
+    r: 0.61, a: 8, y: 2.8, color: 0xff99cc, size: 4.5,
+    image: NASA('PIA25688'),
+    imageCredit: 'NASA / ESA / CSA / JWST',
+    type: 'Область звездообразования',
+    desc: 'Одна из ближайших колыбелей звёзд. Снимок JWST показывает молодые светила, струи газа и цветные облака пыли рядом с Солнечной системой.',
+    distEarth: '≈ 390 св. лет', distCenter: '≈ 26 000 св. лет',
+    extra: 'Одно из ближайших к нам мест рождения звёзд',
+  },
+  {
+    id: 'westerlund2', name: 'Вестерлунд 2', kind: 'cluster',
+    r: 0.36, a: 215, y: -3.0, color: 0xff88aa, size: 4.0,
+    image: NASA('PIA17563'),
+    imageCredit: 'NASA / ESA / Hubble',
+    type: 'Молодое массивное скопление',
+    desc: 'Тысячи новорождённых звёзд внутри туманности Gum 29. Снимок Hubble к 25-летию телескопа.',
+    distEarth: '≈ 20 000 св. лет', distCenter: '≈ 16 000 св. лет',
+    extra: 'Возраст скопления ≈ 2 млн лет',
+  },
+  {
+    id: 'lagoon', name: 'Туманность Лагуна', kind: 'nebula',
+    r: 0.4, a: 105, y: 3.2, color: 0xff6699, size: 4.3,
+    image: NASA('PIA14400'),
+    imageCredit: 'NASA / ESA / Hubble',
+    type: 'Эмиссионная туманность (M8)',
+    desc: 'Яркое облако в Стрельце, видимое даже в бинокль. Внутри — «час песочных часов» и молодые горячие звёзды.',
+    distEarth: '≈ 4 100 св. лет', distCenter: '≈ 21 000 св. лет',
+    extra: 'Диаметр ≈ 110 × 50 св. лет',
+  },
+  {
+    id: 'cats-paw', name: 'Кошачья Лапа', kind: 'nebula',
+    r: 0.33, a: 145, y: -4.5, color: 0xff5566, size: 4.1,
+    image: NASA('PIA16883'),
+    imageCredit: 'NASA / ESA / Hubble',
+    type: 'Область звездообразования (NGC 6334)',
+    desc: 'Красные «пальцы» газа, похожие на след кошки. Здесь рождаются одни из самых массивных звёзд Галактики.',
+    distEarth: '≈ 5 500 св. лет', distCenter: '≈ 19 000 св. лет',
+    extra: 'Содержит десятки протозвёзд',
   },
 ];
 
@@ -258,6 +330,23 @@ function buildGalaxyDisk() {
   })));
 }
 
+function addGalaxyPhotoDisk() {
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin('anonymous');
+  loader.load(NASA('PIA19341'), (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const disk = new THREE.Mesh(
+      new THREE.CircleGeometry(MAX_R * 1.05, 64),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      })
+    );
+    disk.rotation.x = -Math.PI / 2;
+    armsGroup.add(disk);
+  });
+}
+
 // ─── Спрайт-текстура свечения ────────────────────────────────────────────────
 const _spriteCache = {};
 function glowSprite(color) {
@@ -340,6 +429,80 @@ function objectWorldPos(o) {
   const rad = o.r * MAX_R;
   const a = o.a * Math.PI / 180;
   return new THREE.Vector3(Math.cos(a) * rad, o.y, Math.sin(a) * rad);
+}
+
+function photoScale(o) {
+  if (o.kind === 'nebula') return o.size * 7.5;
+  if (o.kind === 'cluster') return o.size * 6.2;
+  if (o.kind === 'core') return o.size * 5.5;
+  if (o.kind === 'system') return o.size * 4.2;
+  return o.size * 3.6;
+}
+
+function makePhotoGroup(o, tex) {
+  const group = new THREE.Group();
+  group.position.copy(o.pos);
+
+  const img = tex.image;
+  const aspect = (img && img.width && img.height) ? img.width / img.height : 1.4;
+  const w = photoScale(o);
+  const h = w / aspect;
+  const geo = new THREE.PlaneGeometry(w, h);
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    opacity: o.kind === 'nebula' ? 0.92 : 0.88,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  const main = new THREE.Mesh(geo, mat);
+  group.add(main);
+
+  if (o.kind === 'nebula' || o.kind === 'cluster') {
+    const sideMat = mat.clone();
+    sideMat.opacity = 0.38;
+    const side = new THREE.Mesh(geo, sideMat);
+    side.rotation.y = Math.PI / 2;
+    group.add(side);
+
+    const tiltMat = mat.clone();
+    tiltMat.opacity = 0.22;
+    const tilt = new THREE.Mesh(geo, tiltMat);
+    tilt.rotation.y = Math.PI / 4;
+    tilt.rotation.x = 0.25;
+    group.add(tilt);
+  }
+
+  const outward = o.pos.clone();
+  if (outward.lengthSq() < 0.01) outward.set(0, 0.2, 1);
+  group.lookAt(outward.clone().add(o.pos));
+
+  o.photoGroup = group;
+  o.photoWidth = w;
+  if (o.core) o.core.visible = false;
+  scene.add(group);
+}
+
+function loadObjectPhotos() {
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin('anonymous');
+  return Promise.all(OBJECTS.map((o) => new Promise((resolve) => {
+    if (o.kind === 'blackhole' || !o.image) { resolve(); return; }
+    loader.load(
+      o.image,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.minFilter = THREE.LinearFilter;
+        makePhotoGroup(o, tex);
+        resolve();
+      },
+      undefined,
+      () => resolve()
+    );
+  })));
 }
 
 function buildObjects() {
@@ -531,7 +694,7 @@ function jumpTo(o) {
 
   // Куда летим
   cam.tTarget.copy(o.pos);
-  warpState.toDist = o.solar ? 26 : Math.max(o.size * 6 + 14, 40);
+  warpState.toDist = o.solar ? 26 : Math.max((o.photoWidth || o.size * 8) * 1.15, 18);
   warpState.toAz = cam.azimuth + 0.5;
   warpState.toEl = 0.3;
 
@@ -648,10 +811,17 @@ function animate() {
   armsGroup.rotation.y += dt * 0.012;          // медленное вращение Галактики
   if (blackHole) blackHole.disk.rotation.z += dt * 0.5;
 
-  // пульсация точек
+  // пульсация точек и лёгкое «дыхание» туманностей
   for (const o of OBJECTS) {
     const s = o.size * 2.4 * (1 + Math.sin(t * 2 + o.a) * 0.06) * (hovered === o ? 1.5 : 1);
     o.sprite.scale.set(s, s, 1);
+    if (o.photoGroup) {
+      const pulse = 1 + Math.sin(t * 0.4 + o.a) * 0.03;
+      o.photoGroup.scale.setScalar(pulse);
+      o.photoGroup.rotation.y += dt * (o.kind === 'nebula' ? 0.05 : 0.02);
+      const dist = camera.position.distanceTo(o.pos);
+      o.sprite.visible = dist > (o.photoWidth || 20) * 1.8;
+    }
   }
 
   updateWarp();
@@ -694,12 +864,16 @@ function arrivalIntro() {
 
 // ─── Запуск ──────────────────────────────────────────────────────────────────
 buildGalaxyDisk();
+addGalaxyPhotoDisk();
 blackHole = buildBlackHole();
 buildObjects();
+loadObjectPhotos().then(() => {
+  if (loadingEl) loadingEl.classList.add('hidden');
+  statusEl.textContent = 'Кликните на объект — прыжок к 3D-снимку Hubble / JWST.';
+});
 arrivalIntro();
 animate();
 
 if (loadingEl) loadingEl.classList.add('hidden');
-statusEl.textContent = 'Кликните на объект, чтобы прыгнуть к нему на скорости света.';
 const vt = document.getElementById('version-tag');
 if (vt) vt.textContent = APP_VERSION;

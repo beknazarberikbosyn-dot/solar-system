@@ -7,8 +7,8 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>Млечный Путь — интерактивная карта Галактики</title>
-  <link rel="stylesheet" href="style.css?v=13">
-  <link rel="stylesheet" href="galaxy.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="galaxy.css?v=14">
 </head>
 <body>
   <canvas id="scene"></canvas>
@@ -22,11 +22,11 @@
     <div class="controls">
       <h2>Как исследовать</h2>
       <ul>
-        <li><span>🖱️</span> Клик по объекту — прыжок на скорости света</li>
+        <li><span>🖱️</span> Клик по объекту — прыжок к 3D-снимку</li>
         <li><span>✋</span> Перетаскивание — вращение Галактики</li>
         <li><span>🔍</span> Колесо мыши — приближение/отдаление</li>
         <li><span>☀️</span> «Солнечная система» — вход в детальный симулятор</li>
-        <li><span>🕳️</span> В центре — Стрелец A*, чёрная дыра</li>
+        <li><span>📷</span> Туманности построены по фото Hubble / JWST</li>
       </ul>
     </div>
   </div>
@@ -38,9 +38,9 @@
   <aside id="gx-info"></aside>
 
   <!-- Нижняя подсказка -->
-  <div id="gx-hint">Наведите на светящуюся точку и кликните — вы помчитесь к ней со скоростью света</div>
+  <div id="gx-hint">Кликните на туманность — вы подлетите к её 3D-снимку Hubble / JWST</div>
 
-  <div id="version-tag">v13</div>
+  <div id="version-tag">v14</div>
 
   <div id="loading">
     <div class="spinner"></div>
@@ -58,6 +58,6 @@
     }
   }
   </script>
-  <script type="module" src="galaxy.js?v=13"></script>
+  <script type="module" src="galaxy.js?v=14"></script>
 </body>
 </html>
