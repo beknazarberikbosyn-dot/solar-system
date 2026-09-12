@@ -1,0 +1,235 @@
+/* ─── Панель симулятора ─── */
+#ui.sim-ui {
+  max-width: 360px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding-right: 18px;
+}
+
+#ui.sim-ui::-webkit-scrollbar { width: 6px; }
+#ui.sim-ui::-webkit-scrollbar-thumb {
+  background: rgba(120, 150, 255, 0.35);
+  border-radius: 4px;
+}
+
+#ui.sim-ui h1 {
+  background: linear-gradient(90deg, #9fd0ff, #c9a6ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+#scenario-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 12px 0 10px;
+}
+
+.sc-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(140, 170, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cde;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+}
+
+.sc-tab:hover {
+  border-color: rgba(180, 200, 255, 0.55);
+  background: rgba(80, 110, 220, 0.18);
+}
+
+.sc-tab.active {
+  border-color: rgba(160, 140, 255, 0.8);
+  background: rgba(90, 70, 220, 0.28);
+  box-shadow: 0 0 16px rgba(120, 90, 255, 0.18);
+}
+
+.sc-tab .ico { font-size: 1.05rem; line-height: 1; }
+.sc-tab .ttl { font-size: 0.72rem; font-weight: 700; }
+
+#scenario-desc {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #9ab;
+  margin-bottom: 14px;
+}
+
+.param {
+  margin-bottom: 12px;
+}
+
+.param-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.param-head label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8899bb;
+}
+
+.param-head b {
+  font-size: 0.75rem;
+  color: #e8e8ff;
+  font-weight: 600;
+}
+
+.param input[type="range"] {
+  width: 100%;
+  accent-color: #7a8cff;
+  cursor: pointer;
+}
+
+.param select {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 170, 255, 0.3);
+  background: rgba(8, 12, 30, 0.8);
+  color: #e8e8ff;
+  font-size: 0.82rem;
+}
+
+.sim-actions {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.sim-actions button {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.sim-actions button:hover { opacity: 0.88; }
+.sim-actions button:active { transform: scale(0.98); }
+
+#btn-play {
+  background: linear-gradient(135deg, #3366ff, #6633ff);
+  color: #fff;
+}
+
+#btn-play.playing {
+  background: linear-gradient(135deg, #c06020, #d4a020);
+}
+
+#btn-reset {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ccd;
+}
+
+.sim-keys {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: #667799;
+  text-align: center;
+}
+
+/* ─── Телеметрия справа ─── */
+#sim-readout {
+  position: fixed;
+  top: 72px;
+  right: 20px;
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  z-index: 40;
+  background: rgba(10, 14, 35, 0.88);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  border-radius: 20px;
+  padding: 20px 22px;
+}
+
+#sim-readout h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8899bb;
+  margin-bottom: 10px;
+}
+
+#readout-story {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #dde;
+  margin-bottom: 14px;
+}
+
+#readout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+#readout-grid .cell {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+#readout-grid .cell.wide { grid-column: 1 / -1; }
+
+#readout-grid .cell span {
+  display: block;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #667799;
+  margin-bottom: 3px;
+}
+
+#readout-grid .cell b {
+  font-size: 0.86rem;
+  color: #e8e8ff;
+  font-weight: 600;
+}
+
+#readout-grid .cell.warn b { color: #ffb36a; }
+#readout-grid .cell.danger b { color: #ff6b6b; }
+#readout-grid .cell.ok b { color: #7ee0a4; }
+
+@media (max-width: 860px) {
+  #site-nav {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  #ui.sim-ui {
+    top: 64px;
+    max-width: calc(100vw - 24px);
+    max-height: 42vh;
+  }
+  #sim-readout {
+    top: auto;
+    bottom: 52px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: 28vh;
+  }
+}

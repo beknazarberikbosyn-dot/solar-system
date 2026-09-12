@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Симулятор — что если в космосе</title>
+  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="galaxy.css?v=18">
+  <link rel="stylesheet" href="simulate.css?v=18">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <nav id="site-nav">
+    <a href="index.html">🌌 Галактика</a>
+    <a href="solar.html">☀️ Система</a>
+    <a href="simulate.html" class="active">⚡ Симулятор</a>
+  </nav>
+
+  <div id="ui" class="sim-ui">
+    <h1>⚡ Симулятор</h1>
+    <p id="mode-badge">Что если…</p>
+    <p id="sim-status">Выберите сценарий и запустите</p>
+
+    <div id="scenario-tabs"></div>
+    <p id="scenario-desc"></p>
+
+    <div class="controls" id="param-list"></div>
+
+    <div class="sim-actions">
+      <button type="button" id="btn-play">▶ Запуск</button>
+      <button type="button" id="btn-reset">↺ Сброс</button>
+    </div>
+    <p class="sim-keys">Пробел — пауза · R — сброс · мышь — обзор</p>
+  </div>
+
+  <aside id="sim-readout">
+    <h2>Телеметрия</h2>
+    <p id="readout-story">Запустите симуляцию, чтобы увидеть, что произойдёт.</p>
+    <div id="readout-grid"></div>
+  </aside>
+
+  <div id="gx-hint">Крутите параметры — сценарий пересчитается вживую. Запуск проигрывает «что если».</div>
+  <div id="version-tag">sim-v1</div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Готовим симулятор…</p>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+  <script type="module" src="simulate.js?v=18d"></script>
+</body>
+</html>
