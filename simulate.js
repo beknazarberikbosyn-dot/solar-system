@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createPlanet } from './planets.js';
 
 const canvas = document.getElementById('scene');
 const statusEl = document.getElementById('sim-status');
@@ -44,9 +45,9 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 const simRoot = new THREE.Group();
 scene.add(simRoot);
 
-scene.add(new THREE.AmbientLight(0x334466, 0.9));
-scene.add(new THREE.HemisphereLight(0x8899cc, 0x080814, 0.45));
-const keyLight = new THREE.PointLight(0xfff2d0, 3.2, 220, 0.6);
+scene.add(new THREE.AmbientLight(0x3a4a66, 0.7));
+scene.add(new THREE.HemisphereLight(0x9aafd0, 0x080814, 0.5));
+const keyLight = new THREE.PointLight(0xfff2d0, 5.2, 220, 0.45);
 keyLight.position.set(18, 14, 22);
 scene.add(keyLight);
 
@@ -58,30 +59,6 @@ scene.add(keyLight);
   scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.42 })));
 })();
 
-const textureLoader = new THREE.TextureLoader();
-textureLoader.setCrossOrigin('anonymous');
-const texCache = new Map();
-
-function loadTexture(url, fallback) {
-  if (texCache.has(url)) return texCache.get(url);
-  const p = new Promise((resolve) => {
-    textureLoader.load(
-      url,
-      (tex) => { tex.colorSpace = THREE.SRGBColorSpace; resolve(tex); },
-      undefined,
-      () => {
-        const c = document.createElement('canvas');
-        c.width = c.height = 64;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#' + fallback.toString(16).padStart(6, '0');
-        ctx.fillRect(0, 0, 64, 64);
-        resolve(new THREE.CanvasTexture(c));
-      },
-    );
-  });
-  texCache.set(url, p);
-  return p;
-}
 
 const _glow = {};
 function glowSprite(color) {
@@ -126,18 +103,11 @@ function visRadius(p) {
 
 async function makePlanetMesh(id, scale = 1) {
   const p = PLANETS[id];
-  const tex = await loadTexture(p.tex, p.color);
   const r = visRadius(p) * scale;
-  const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(r, 48, 48),
-    new THREE.MeshStandardMaterial({
-      map: tex, roughness: 0.78, metalness: 0.04,
-      emissive: 0x111122, emissiveIntensity: 0.12,
-    }),
-  );
-  mesh.userData.r = r;
-  mesh.userData.id = id;
-  return mesh;
+  const body = await createPlanet(id, { radius: r });
+  body.mesh.userData.r = r;
+  body.mesh.userData.id = id;
+  return body.mesh;
 }
 
 function makeParticles(count, color, size = 0.08) {
@@ -267,8 +237,8 @@ const SCENARIOS = [
         st.heating = THREE.MathUtils.clamp((8 / st.rCoord - 0.2), 0, 1);
         atmo.material.color.setHSL(0.08 + (1 - st.heating) * 0.45, 0.85, 0.55);
         atmo.material.opacity = 0.1 + st.heating * 0.35;
-        earth.material.emissive = new THREE.Color().setHSL(0.05, 0.8, 0.15 * st.heating);
-        earth.material.emissiveIntensity = 0.15 + st.heating * 1.4;
+        earth.userData.setHeat?.(st.heating, new THREE.Vector3(0, 0, 0));
+        earth.userData.tick?.(0.016);
         earth.visible = !st.swallowed;
         disk.rotation.z += 0.004;
         ring.rotation.z -= 0.01;
@@ -439,6 +409,8 @@ const SCENARIOS = [
           const step = dt * p.timeScale;
           aMesh.rotation.y += 0.01 * p.timeScale;
           bMesh.rotation.y -= 0.012 * p.timeScale;
+          aMesh.userData.tick?.(step);
+          bMesh.userData.tick?.(step);
 
           if (!st.hit) {
             st.ax += st.vax * step;
@@ -589,12 +561,13 @@ const SCENARIOS = [
           shock.material.opacity = 0;
           trail.life.fill(0);
           ejecta.life.fill(0);
-          earth.material.emissiveIntensity = 0.12;
+          earth.userData.setHeat?.(0);
           placeRock(p);
         },
         update(dt, p) {
           const step = dt * p.timeScale;
           earth.rotation.y += 0.004 * p.timeScale;
+          earth.userData.tick?.(step);
           if (!st.hit) {
             st.u = Math.min(1, st.u + step * 0.22);
             placeRock(p);
@@ -629,8 +602,7 @@ const SCENARIOS = [
             flash.scale.setScalar(4 + st.t * 18);
             shock.scale.setScalar(1 + st.t * 6);
             shock.material.opacity = Math.max(0, 0.7 - st.t * 0.35);
-            earth.material.emissive = new THREE.Color(0xff6622);
-            earth.material.emissiveIntensity = Math.max(0.12, 1.6 - st.t);
+            earth.userData.setHeat?.(Math.max(0, 0.85 - st.t * 0.35), flash.position);
             for (let i = 0; i < ejecta.count; i++) {
               if (ejecta.life[i] <= 0) continue;
               ejecta.life[i] -= step * 0.3;
@@ -697,12 +669,15 @@ const SCENARIOS = [
         new THREE.MeshBasicMaterial({ color: 0xaaccff }),
       );
       remnant.visible = false;
-      const earth = await makePlanetMesh('earth', 0.7);
+      const earth = await makePlanetMesh('earth', 0.85);
       const spray = makeParticles(400, 0xffcc88, 0.1);
-      g.add(star, corona, blast, remnant, earth, spray.pts);
+      const sear = makeParticles(260, 0xff6622, 0.055);
+      const shockLight = new THREE.PointLight(0xffaa66, 0, 80, 1.2);
+      shockLight.position.set(0, 0, 0);
+      g.add(star, corona, blast, remnant, earth, spray.pts, sear.pts, shockLight);
       simRoot.add(g);
 
-      const st = { phase: 0, t: 0 };
+      const st = { phase: 0, t: 0, heat: 0 };
 
       function energy(p) {
         const ly = p.distLy * 9.4607e15;
@@ -713,28 +688,34 @@ const SCENARIOS = [
 
       return {
         reset(p) {
-          st.phase = 0; st.t = 0;
+          st.phase = 0; st.t = 0; st.heat = 0;
           star.visible = true;
           remnant.visible = false;
           blast.scale.setScalar(1);
           blast.material.opacity = 0;
           spray.life.fill(0);
+          sear.life.fill(0);
+          shockLight.intensity = 0;
           earth.position.set(8 + p.distLy * 0.04, 0, 0);
-          earth.material.emissiveIntensity = 0.12;
+          earth.userData.setHeat?.(0, star.position);
         },
         update(dt, p) {
           const step = dt * p.timeScale;
           st.t += step;
           earth.position.set(8 + p.distLy * 0.04, 0, 0);
-          earth.rotation.y += 0.01;
+          earth.rotation.y += 0.008;
+          earth.userData.tick?.(step);
+          earth.userData.setSunDir?.(new THREE.Vector3(-1, 0.1, 0.05));
           if (st.phase === 0) {
             const swell = 1 + Math.min(1.8, st.t * 0.55);
             star.scale.setScalar(swell);
             corona.scale.setScalar(swell);
             star.material.color.setHSL(0.08 - st.t * 0.01, 0.85, 0.6);
+            shockLight.intensity = 1.2 + swell * 0.6;
             if (st.t > 3.2) { st.phase = 1; st.t = 0; }
           } else if (st.phase === 1) {
             star.scale.setScalar(Math.max(0.2, 2.6 - st.t * 4));
+            shockLight.intensity = 8;
             if (st.t > 0.55) {
               st.phase = 2; st.t = 0;
               star.visible = false;
@@ -753,6 +734,7 @@ const SCENARIOS = [
             blast.scale.setScalar(1 + st.t * 9);
             blast.material.opacity = Math.max(0, 0.55 - st.t * 0.12);
             remnant.rotation.y += 0.2;
+            shockLight.intensity = Math.max(0, 14 - st.t * 2.2);
             for (let i = 0; i < spray.count; i++) {
               spray.pos[i * 3] += spray.vel[i].x * step;
               spray.pos[i * 3 + 1] += spray.vel[i].y * step;
@@ -760,10 +742,33 @@ const SCENARIOS = [
             }
             spray.pts.geometry.attributes.position.needsUpdate = true;
             const hit = st.t > p.distLy * 0.012;
-            if (hit) {
-              const { lethal, ozone } = energy(p);
-              earth.material.emissive = new THREE.Color(lethal ? 0xff3300 : ozone ? 0xffaa44 : 0x66ffaa);
-              earth.material.emissiveIntensity = lethal ? 1.8 : ozone ? 0.8 : 0.35;
+            const { lethal, ozone } = energy(p);
+            const target = !hit ? 0 : lethal ? 1 : ozone ? 0.62 : 0.26;
+            st.heat += (target - st.heat) * Math.min(1, step * (hit ? 1.6 : 0.8));
+            earth.userData.setHeat?.(st.heat, star.position);
+            if (hit && st.heat > 0.2) {
+              for (let i = 0; i < sear.count; i++) {
+                if (sear.life[i] <= 0 && Math.random() < 0.18 * p.timeScale) {
+                  sear.life[i] = 0.7 + Math.random() * 0.5;
+                  const th = (Math.random() - 0.5) * 1.4;
+                  const ph = (Math.random() - 0.5) * 1.2;
+                  const er = earth.userData.r * (0.98 + Math.random() * 0.08);
+                  sear.pos[i * 3] = earth.position.x - er * Math.cos(th);
+                  sear.pos[i * 3 + 1] = earth.position.y + Math.sin(ph) * er;
+                  sear.pos[i * 3 + 2] = earth.position.z + Math.sin(th) * er;
+                  sear.vel[i].set(-1.8 - Math.random() * 2.4, (Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 1.4);
+                }
+                if (sear.life[i] > 0) {
+                  sear.life[i] -= step * 0.7;
+                  sear.pos[i * 3] += sear.vel[i].x * step;
+                  sear.pos[i * 3 + 1] += sear.vel[i].y * step;
+                  sear.pos[i * 3 + 2] += sear.vel[i].z * step;
+                } else {
+                  sear.pos[i * 3 + 1] = -400;
+                }
+              }
+              sear.pts.geometry.attributes.position.needsUpdate = true;
+              sear.pts.material.opacity = 0.35 + st.heat * 0.65;
             }
           }
           return this.telemetry(p);
@@ -774,9 +779,9 @@ const SCENARIOS = [
           let story;
           if (st.phase === 0) story = `Звезда ${p.mass.toFixed(1)} M☉ раздувается. Ядро жжёт всё более тяжёлые элементы — до железа, после которого гореть нечем.`;
           else if (st.phase === 1) story = 'Ядро схлопывается за доли секунды. Снаружи звезда ещё «жива», внутри уже коллапс.';
-          else if (lethal) story = `Удар гамма и космических лучей стерилизует дневную сторону. На ${p.distLy} св. лет это смертельно. Остаток — ${remnantName}.`;
-          else if (ozone) story = `Озоновый слой Земли разрушен. УФ бьёт по поверхности годами, пищевые цепи падают. Остаток — ${remnantName}.`;
-          else story = `На ${p.distLy} св. лет вспышка ослепительна, полярные сияния до экватора, но биосфера в целом выживет. Остаток — ${remnantName}.`;
+          else if (lethal) story = `Ударная волна дошла до Земли: дневная сторона раскаляется до белого, кора плавится, атмосфера вспыхивает. На ${p.distLy} св. лет это смертельно. Остаток — ${remnantName}.`;
+          else if (ozone) story = `Обращённое к вспышке полушарие разогревается, озон сгорает. УФ бьёт по поверхности годами. Остаток — ${remnantName}.`;
+          else story = `На ${p.distLy} св. лет вспышка ослепительна: ночная сторона светится полярными сияниями, дневная слегка теплеет, но биосфера выживет. Остаток — ${remnantName}.`;
           return {
             story,
             cells: [
@@ -803,14 +808,18 @@ const SCENARIOS = [
     ],
     async create() {
       const g = new THREE.Group();
-      const earth = await makePlanetMesh('earth', 1.2);
+      const earth = await makePlanetMesh('earth', 1.35);
       const moon = await makePlanetMesh('moon', 1.1);
       const ringPts = makeParticles(420, 0xccbbaa, 0.05);
+      const spray = makeParticles(180, 0x66bbee, 0.045);
       const bulge = new THREE.Mesh(
-        new THREE.SphereGeometry(earth.userData.r * 1.02, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0x3377ff, transparent: true, opacity: 0.15, depthWrite: false }),
+        new THREE.SphereGeometry(earth.userData.r * 1.03, 48, 48),
+        new THREE.MeshPhysicalMaterial({
+          color: 0x1a7ad4, transparent: true, opacity: 0.12,
+          roughness: 0.12, metalness: 0.08, depthWrite: false,
+        }),
       );
-      g.add(earth, moon, ringPts.pts, bulge);
+      g.add(earth, moon, ringPts.pts, spray.pts, bulge);
       simRoot.add(g);
 
       const rocheKm = 2.44 * 6371 * Math.pow(5514 / 3344, 1 / 3);
@@ -821,21 +830,69 @@ const SCENARIOS = [
       }
 
       return {
-        reset() {
+        reset(p) {
           st.theta = 0.2;
           st.broken = false;
           moon.visible = true;
           ringPts.life.fill(0);
+          spray.life.fill(0);
+          const d = visDist(p.dist);
+          moon.position.set(Math.cos(st.theta) * d, 0.2, Math.sin(st.theta) * d);
+          const flood = THREE.MathUtils.clamp((384000 / Math.max(p.dist, 8000) - 1) / 10, 0, 1);
+          earth.userData.setFlood?.(p.dist < rocheKm ? 1 : flood, moon.position);
+          bulge.scale.set(1 + flood * 0.085, 1 - flood * 0.02, 1 + flood * 0.03);
+          bulge.material.opacity = 0.08 + flood * 0.42;
+          if (moon.position.lengthSq() > 1e-6) {
+            bulge.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), moon.position.clone().normalize());
+          }
+          ringPts.pts.visible = p.dist < rocheKm;
+          moon.visible = p.dist >= rocheKm;
         },
         update(dt, p) {
           const step = dt * p.timeScale;
           st.theta += step * (80 / Math.max(p.dist, 8000)) * 8;
           const d = visDist(p.dist);
           const tide = THREE.MathUtils.clamp(384000 / p.dist, 1, 18);
-          earth.scale.set(1 + tide * 0.012, 1 - tide * 0.006, 1 + tide * 0.012);
+          const flood = THREE.MathUtils.clamp((384000 / Math.max(p.dist, 8000) - 1) / 10, 0, 1);
+          earth.scale.set(1 + tide * 0.01, 1 - tide * 0.005, 1 + tide * 0.01);
           earth.rotation.y += 0.006;
-          bulge.scale.set(1 + tide * 0.04, 1, 1 + tide * 0.04);
-          bulge.lookAt(moon.position);
+          earth.userData.tick?.(step);
+          earth.userData.setSunDir?.(new THREE.Vector3(0.7, 0.35, 0.6));
+          moon.position.set(Math.cos(st.theta) * d, 0.2, Math.sin(st.theta) * d);
+          earth.userData.setFlood?.(st.broken ? 1 : flood, moon.position);
+          bulge.scale.set(1 + flood * 0.085 + tide * 0.012, 1 - flood * 0.02, 1 + flood * 0.03);
+          bulge.material.opacity = 0.08 + flood * 0.42;
+          bulge.quaternion.setFromUnitVectors(
+            new THREE.Vector3(1, 0, 0),
+            moon.position.clone().normalize(),
+          );
+          if (flood > 0.25) {
+            for (let i = 0; i < spray.count; i++) {
+              if (spray.life[i] <= 0 && Math.random() < 0.12 * flood * p.timeScale) {
+                spray.life[i] = 0.6;
+                const a = st.theta + (Math.random() - 0.5) * 0.8;
+                const er = earth.userData.r * (1.02 + flood * 0.08);
+                spray.pos[i * 3] = Math.cos(a) * er;
+                spray.pos[i * 3 + 1] = (Math.random() - 0.5) * 0.35;
+                spray.pos[i * 3 + 2] = Math.sin(a) * er;
+                spray.vel[i].set(Math.cos(a) * 0.4, 0.35 + Math.random() * 0.5, Math.sin(a) * 0.4);
+              }
+              if (spray.life[i] > 0) {
+                spray.life[i] -= step * 0.55;
+                spray.pos[i * 3] += spray.vel[i].x * step;
+                spray.pos[i * 3 + 1] += spray.vel[i].y * step;
+                spray.pos[i * 3 + 2] += spray.vel[i].z * step;
+                spray.vel[i].y -= 0.8 * step;
+              } else {
+                spray.pos[i * 3 + 1] = -400;
+              }
+            }
+            spray.pts.geometry.attributes.position.needsUpdate = true;
+            spray.pts.visible = true;
+            spray.pts.material.opacity = 0.25 + flood * 0.5;
+          } else {
+            spray.pts.visible = false;
+          }
           if (p.dist < rocheKm) {
             st.broken = true;
             moon.visible = false;
@@ -851,24 +908,25 @@ const SCENARIOS = [
           } else {
             st.broken = false;
             moon.visible = true;
-            moon.position.set(Math.cos(st.theta) * d, 0.2, Math.sin(st.theta) * d);
             ringPts.pts.visible = false;
           }
           return this.telemetry(p, tide);
         },
         telemetry(p, tide = 1) {
           const tideM = 0.5 * (384000 / p.dist) ** 3;
+          const floodPct = Math.round(THREE.MathUtils.clamp((384000 / Math.max(p.dist, 8000) - 1) / 10, 0, 1) * 100);
           const story = st.broken
-            ? `Луна пересекла предел Роша (~${fmt(rocheKm, 0)} км). Приливы Земли разорвали её в кольцо обломков — как у Сатурна, только из лунного камня.`
+            ? `Луна пересекла предел Роша (~${fmt(rocheKm, 0)} км). Приливы Земли разорвали её в кольцо обломков — как у Сатурна, только из лунного камня. Океан покрыл почти всю сушу.`
             : p.dist < 50000
-              ? `Приливные волны высотой сотни метров. Землетрясения не стихают, сутки замедляются сильнее.`
-              : `Луна ближе обычного (${fmt(p.dist, 0)} км вместо 384 000). Океаны ходят огромным горбом, затмения стали обыденностью.`;
+              ? `Вода поднимается над континентами (затопление ~${floodPct}%). Приливные волны высотой сотни метров, землетрясения не стихают.`
+              : `Луна ближе обычного (${fmt(p.dist, 0)} км вместо 384 000). Океаны вздуваются горбом к Луне, берега уже уходят под воду (~${floodPct}%).`;
           return {
             story,
             cells: [
               { label: 'Дистанция', value: `${fmt(p.dist, 0)} км`, cls: p.dist < rocheKm ? 'danger' : '' },
               { label: 'Предел Роша', value: `${fmt(rocheKm, 0)} км` },
               { label: 'Прилив (оценка)', value: `${fmt(tideM, 1)} м`, cls: tideM > 20 ? 'warn' : 'ok' },
+              { label: 'Затопление суши', value: `${floodPct}%`, cls: floodPct > 55 ? 'danger' : floodPct > 25 ? 'warn' : 'ok' },
               { label: 'Состояние Луны', value: st.broken ? 'разорвана в кольцо' : 'цела', cls: st.broken ? 'danger' : 'ok' },
               { label: 'Сейчас', value: '≈ 384 000 км · прилив ~0,5 м', wide: true },
             ],

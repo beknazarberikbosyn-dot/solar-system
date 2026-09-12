@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FilesetResolver, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { createPlanet } from './planets.js';
 
 // ─── DOM ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('scene');
@@ -108,7 +109,8 @@ const PLANETS = [
 ];
 
 // ─── Состояния приложения ───────────────────────────────────────────────────
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
+const PLANET_IDS = ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 const State = { SYSTEM: 'system', LOCKED: 'locked', INFO: 'info' };
 let appState = State.SYSTEM;
 let handActive = false;
@@ -119,16 +121,16 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(0, 25, 70);
 
-scene.add(new THREE.AmbientLight(0x334466, 1.2));
-scene.add(new THREE.HemisphereLight(0x8899cc, 0x111122, 0.6));
+scene.add(new THREE.AmbientLight(0x2a3550, 0.55));
+scene.add(new THREE.HemisphereLight(0x9aafd0, 0x0a0a16, 0.42));
 
-const sunLight = new THREE.PointLight(0xfff5e0, 4, 400, 0.5);
+const sunLight = new THREE.PointLight(0xfff4d6, 10, 480, 0.4);
 scene.add(sunLight);
 
 // Звёзды
@@ -138,68 +140,19 @@ for (let i = 0; i < positions.length; i++) positions[i] = (Math.random() - 0.5) 
 starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 })));
 
-const textureLoader = new THREE.TextureLoader();
 const planetMeshes = [];
 const highlightRings = [];
-
-function loadTexture(url, fallbackColor) {
-  return new Promise(resolve => {
-    textureLoader.load(
-      url,
-      tex => { tex.colorSpace = THREE.SRGBColorSpace; resolve(tex); },
-      undefined,
-      () => {
-        const c = document.createElement('canvas');
-        c.width = c.height = 64;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#' + fallbackColor.toString(16).padStart(6, '0');
-        ctx.fillRect(0, 0, 64, 64);
-        resolve(new THREE.CanvasTexture(c));
-      }
-    );
-  });
-}
-
-const FALLBACK_COLORS = [0xffdd44, 0xaaaaaa, 0xe8cda0, 0x4488ff, 0xff4422, 0xd4a574, 0xc9b896, 0x88ddff, 0x2244cc];
+const _sunDir = new THREE.Vector3();
+let earthMoon = null;
 
 async function createPlanets() {
   for (let i = 0; i < PLANETS.length; i++) {
     const p = PLANETS[i];
-    const tex = await loadTexture(p.texture, FALLBACK_COLORS[i]);
-    const geo = new THREE.SphereGeometry(p.radius, 48, 48);
+    const body = await createPlanet(PLANET_IDS[i], { radius: p.radius });
+    const mesh = body.mesh;
+    mesh.userData.planetIndex = i;
+    mesh.userData.angle = Math.random() * Math.PI * 2;
 
-    const mat = p.glow
-      ? new THREE.MeshBasicMaterial({ map: tex })
-      : new THREE.MeshStandardMaterial({
-          map: tex,
-          roughness: 0.8,
-          metalness: 0.05,
-          emissive: 0x111122,
-          emissiveIntensity: 0.15,
-        });
-
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.userData = { planetIndex: i, angle: Math.random() * Math.PI * 2 };
-
-    if (p.glow) {
-      const glowGeo = new THREE.SphereGeometry(p.radius * 1.3, 32, 32);
-      mesh.add(new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({
-        color: 0xffaa44, transparent: true, opacity: 0.12, depthWrite: false,
-      })));
-    }
-
-    if (p.ring) {
-      const ringTex = await loadTexture(p.ringTexture, 0xc9b896);
-      const ringGeo = new THREE.RingGeometry(p.radius * 1.4, p.radius * 2.2, 64);
-      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
-        map: ringTex, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
-        alphaMap: ringTex, depthWrite: false,
-      }));
-      ring.rotation.x = Math.PI / 2.2;
-      mesh.add(ring);
-    }
-
-    // Кольцо-подсветка при наведении
     const hlGeo = new THREE.RingGeometry(p.radius * 1.15, p.radius * 1.25, 48);
     const hlMat = new THREE.MeshBasicMaterial({
       color: 0xffcc00, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
@@ -211,6 +164,12 @@ async function createPlanets() {
 
     scene.add(mesh);
     planetMeshes.push(mesh);
+
+    if (PLANET_IDS[i] === 'earth') {
+      const moon = await createPlanet('moon', { radius: 0.2 });
+      earthMoon = { mesh: moon.mesh, angle: 0.6, dist: 1.9 };
+      scene.add(moon.mesh);
+    }
 
     if (p.orbit > 0) {
       const pts = [];
@@ -904,8 +863,28 @@ function animate() {
         Math.sin(mesh.userData.angle) * p.orbit
       );
     }
-    mesh.rotation.y += dt * 0.15;
+    mesh.rotation.y += dt * (PLANET_IDS[i] === 'venus' ? -0.04 : 0.15);
+    mesh.userData.tick?.(dt);
+    if (PLANET_IDS[i] !== 'sun') {
+      _sunDir.copy(mesh.position).multiplyScalar(-1);
+      if (_sunDir.lengthSq() < 1e-6) _sunDir.set(1, 0, 0);
+      mesh.userData.setSunDir?.(_sunDir);
+    }
   });
+
+  if (earthMoon) {
+    const earth = planetMeshes[3];
+    earthMoon.angle += dt * 0.65;
+    earthMoon.mesh.position.set(
+      earth.position.x + Math.cos(earthMoon.angle) * earthMoon.dist,
+      earth.position.y + 0.12,
+      earth.position.z + Math.sin(earthMoon.angle) * earthMoon.dist
+    );
+    earthMoon.mesh.rotation.y += dt * 0.08;
+    earthMoon.mesh.userData.tick?.(dt);
+    _sunDir.copy(earthMoon.mesh.position).multiplyScalar(-1);
+    earthMoon.mesh.userData.setSunDir?.(_sunDir);
+  }
 
   updateCameraPosition();
   renderer.render(scene, camera);
