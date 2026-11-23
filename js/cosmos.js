@@ -264,45 +264,38 @@ export function initCosmos(canvas) {
     }
   }
 
+  // Всего шесть крупных небесных тел, разнесённых по странице и по краям
+  // экрана, чтобы они не наслаивались друг на друга и на контент.
+  const PLAN = [
+    { type: 'nebula', f: 0.05, x: 0.9, size: 340 },
+    { type: 'spiral', f: 0.22, x: 0.08, size: 260 },
+    { type: 'cluster', f: 0.4, x: 0.92, size: 170 },
+    { type: 'blackhole', f: 0.58, x: 0.07, size: 230 },
+    { type: 'spiral', f: 0.76, x: 0.9, size: 300 },
+    { type: 'quasar', f: 0.94, x: 0.1, size: 210 },
+  ];
   function buildObjects() {
-    objects = [];
     const maxScroll = Math.max(1, docH - H);
-    const start = heroH * 0.55;
-    // Целевая плотность растёт с глубиной (∝ f^1.4)
-    const total = Math.round(26 + (docH / 1000) * 5.5);
-    let guard = 0;
-    while (objects.length < total && guard++ < total * 40) {
-      const s = start + rnd() * (maxScroll + H * 0.5 - start);
-      const f = Math.min(1, Math.max(0, (s - heroH) / (maxScroll - heroH + 1)));
-      if (rnd() > 0.08 + Math.pow(f, 1.4) * 0.92) continue;
-      // набор типов меняется с глубиной
-      const r = rnd();
-      let type;
-      if (f < 0.3) type = r < 0.45 ? 'nebula' : r < 0.75 ? 'cluster' : 'spiral';
-      else if (f < 0.65) type = r < 0.4 ? 'spiral' : r < 0.6 ? 'nebula' : r < 0.78 ? 'elliptical' : r < 0.9 ? 'blackhole' : 'cluster';
-      else type = r < 0.32 ? 'spiral' : r < 0.52 ? 'blackhole' : r < 0.66 ? 'quasar' : r < 0.8 ? 'nebula' : 'elliptical';
-      const pool = sprites[type];
-      const depth = 0.25 + rnd() * 0.6; // параллакс: больше — ближе
-      const baseSize = { spiral: 190, elliptical: 130, nebula: 300, blackhole: 150, quasar: 120, cluster: 110 }[type];
-      // по краям экрана чаще, чем в центре (центр занят контентом)
-      let x = rnd();
-      if (rnd() < 0.65) x = x < 0.5 ? x * 0.42 : 1 - (1 - x) * 0.42;
-      objects.push({
-        type,
-        img: pool[Math.floor(rnd() * pool.length)],
+    const start = heroH * 0.9;
+    objects = PLAN.map((p, i) => {
+      const pool = sprites[p.type];
+      const depth = 0.55;
+      const s = start + p.f * (maxScroll - start + H * 0.3);
+      return {
+        type: p.type,
+        img: pool[i % pool.length],
         anchor: s,
         depth,
-        x,
-        yOff: (rnd() - 0.5) * H,
-        size: baseSize * (0.55 + depth * 0.7) * (0.75 + f * 0.9),
+        x: W < 700 ? (p.x < 0.5 ? 0.04 : 0.96) : p.x,
+        yOff: 0,
+        size: p.size * (W < 700 ? 0.6 : 1),
         rot: rnd() * Math.PI * 2,
-        rotSpeed: (rnd() - 0.5) * (type === 'spiral' ? 0.05 : type === 'blackhole' ? 0.3 : 0.01),
-        tilt: type === 'spiral' ? 0.35 + rnd() * 0.65 : 1,
-        alpha: 0.5 + depth * 0.5,
+        rotSpeed: p.type === 'spiral' ? 0.03 : p.type === 'blackhole' ? 0.3 : 0.005,
+        tilt: p.type === 'spiral' ? 0.55 : 1,
+        alpha: 0.75,
         phase: rnd() * 10,
-      });
-    }
-    objects.sort((a, b) => a.depth - b.depth);
+      };
+    });
   }
 
   const meteors = [];

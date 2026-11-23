@@ -5,7 +5,7 @@
 // и комета с хвостами, которые всегда смотрят от Солнца.
 // ═══════════════════════════════════════════════════════════════════════
 import * as THREE from 'three';
-import { createStage, addStarfield } from './stage.js';
+import { createStage } from './stage.js';
 import { createPlanet, loadTexture, glowSpriteTex } from './planets.js';
 import { countUp } from './fx.js';
 
@@ -256,7 +256,6 @@ export async function initSolar(root) {
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.25;
 
-  addStarfield(scene, { count: 6000, band: 9000, radius: 1200 });
   scene.add(new THREE.AmbientLight(0x2a3452, 1.5));
   const sunLight = new THREE.PointLight(0xfff1dc, 4.2, 0, 0);
   scene.add(sunLight);
