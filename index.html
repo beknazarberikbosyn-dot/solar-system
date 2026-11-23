@@ -2,69 +2,399 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>Млечный Путь — интерактивная карта Галактики</title>
-  <link rel="stylesheet" href="style.css?v=18">
-  <link rel="stylesheet" href="galaxy.css?v=18">
-</head>
-<body>
-  <canvas id="scene"></canvas>
-
-  <nav id="site-nav">
-    <a href="index.html" class="active">🌌 Галактика</a>
-    <a href="solar.html">☀️ Система</a>
-    <a href="simulate.html">⚡ Симулятор</a>
-  </nav>
-
-  <!-- Панель управления -->
-  <div id="ui">
-    <h1>🌌 Млечный Путь</h1>
-    <p id="mode-badge">Карта Галактики</p>
-    <p id="gx-status">Загрузка Галактики…</p>
-
-    <div class="controls">
-      <h2>Как исследовать</h2>
-      <ul>
-        <li><span>🖱️</span> Клик по объекту — прыжок к 3D-модели</li>
-        <li><span>✋</span> Перетаскивание — вращение Галактики</li>
-        <li><span>🔍</span> Колесо мыши — приближение/отдаление</li>
-        <li><span>☀️</span> «Солнечная система» — вход в детальный симулятор</li>
-        <li><span>⚡</span> «Симулятор» — чёрные дыры, столкновения, сверхновые</li>
-        <li><span>⚪</span> Омега Центавра — шар из десятков тысяч звёзд, цвета с Hubble</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- Слой HTML-подписей объектов -->
-  <div id="labels"></div>
-
-  <!-- Инфо-панель объекта -->
-  <aside id="gx-info"></aside>
-
-  <!-- Нижняя подсказка -->
-  <div id="gx-hint">Прыгни к объекту: скопления — звёзды, туманности — облака по снимкам NASA/Hubble</div>
-
-  <div id="version-tag">v17</div>
-
-  <div id="loading">
-    <div class="spinner"></div>
-    <p>Строим Млечный Путь…</p>
-  </div>
-
-  <!-- Оверлей гиперпрыжка -->
-  <canvas id="warp-overlay"></canvas>
-  <div id="warp-flash"></div>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Space Reacher — путеводитель по Вселенной</title>
+  <meta name="description" content="Space Reacher: интерактивный путеводитель по космосу — история астрономии, основы теории, 3D-модель Солнечной системы и эксперименты «что если» прямо в браузере.">
+  <meta name="theme-color" content="#04050d">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2304050d'/%3E%3Cpath d='M32 8c8 7 11 17 9 28l-9 6-9-6c-2-11 1-21 9-28z' fill='%23fff'/%3E%3Ccircle cx='32' cy='26' r='4' fill='%2348c6ff'/%3E%3Cpath d='M26 44h12l-6 12z' fill='%23ff8a3d'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/main.css?v=20">
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
     }
   }
   </script>
-  <script type="module" src="galaxy.js?v=17d"></script>
+</head>
+<body>
+  <!-- Фоновый космос: чем ниже — тем больше галактик, туманностей и чёрных дыр -->
+  <canvas id="cosmos" aria-hidden="true"></canvas>
+
+  <nav id="topnav" aria-label="Разделы">
+    <a class="brand" href="#hero" aria-label="Space Reacher — в начало">
+      <span class="brand-dot"></span>Space Reacher
+    </a>
+    <div class="links">
+      <a href="#about">Космос</a>
+      <a href="#universe">Объекты</a>
+      <a href="#history">История</a>
+      <a href="#theory">Теория</a>
+      <a href="#solar">Система</a>
+      <a href="#lab">Эксперименты</a>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════ HEADER: запуск ракеты ═══════════════════ -->
+  <header id="hero">
+    <canvas id="hero-canvas" aria-label="Анимация: ракета взлетает с космодрома, астронавт выпускает еду, которая складывается в слово Space Reacher"></canvas>
+    <h1 class="sr-only">Space Reacher</h1>
+    <div class="hero-fallback" aria-hidden="true">Space Reacher</div>
+    <div class="hero-ui">
+      <p class="hero-tagline" id="hero-tagline">
+        <span class="eyebrow">Путеводитель по Вселенной</span>
+        <span class="tag-text" data-type-later>От стартовой площадки — до края наблюдаемой Вселенной.</span>
+      </p>
+      <button type="button" id="hero-skip" class="ghost-btn">Пропустить ⏭</button>
+      <button type="button" id="hero-replay" class="ghost-btn" hidden>↻ Ещё раз</button>
+      <a class="scroll-cue" href="#about"><span>Листайте вниз</span><i></i></a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ═══════════════════ О КОСМОСЕ ═══════════════════ -->
+    <section id="about" class="section">
+      <p class="kicker" data-reveal>01 · Что такое космос</p>
+      <h2 class="title" data-type>Пустота, в которой есть всё</h2>
+      <p class="lead" data-vacuum>
+        Космос начинается всего в ста километрах над нашими головами — на линии Кармана, где воздух настолько разрежен, что крылья самолёта больше не держат. Дальше — почти идеальный вакуум, холод около −270 °C и полная тишина: звуку не через что распространяться. Но эта пустота полна событий: в ней рождаются и умирают звёзды, кружат планеты, сталкиваются галактики, а пространство и время изгибаются вокруг массивных тел. Всё, что мы видим, — лишь около пяти процентов Вселенной. Остальное — загадочные тёмная материя и тёмная энергия.
+      </p>
+
+      <div class="stats">
+        <article class="stat card tilt" data-reveal>
+          <b><span data-count="13.8" data-decimals="1">0</span><small> млрд лет</small></b>
+          <span>возраст Вселенной</span>
+        </article>
+        <article class="stat card tilt" data-reveal>
+          <b><span data-count="93">0</span><small> млрд св. лет</small></b>
+          <span>диаметр наблюдаемой Вселенной</span>
+        </article>
+        <article class="stat card tilt" data-reveal>
+          <b><small>до </small><span data-count="400">0</span><small> млрд</small></b>
+          <span>звёзд в Млечном Пути</span>
+        </article>
+        <article class="stat card tilt" data-reveal>
+          <b><span data-count="6000">0</span><small>+</small></b>
+          <span>подтверждённых экзопланет</span>
+        </article>
+        <article class="stat card tilt" data-reveal>
+          <b><span data-count="299792">0</span><small> км/с</small></b>
+          <span>скорость света</span>
+        </article>
+        <article class="stat card tilt" data-reveal>
+          <b><span data-count="100">0</span><small> км</small></b>
+          <span>до границы космоса</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ ОБЪЕКТЫ ВСЕЛЕННОЙ (бенто с фото) ═══════════════════ -->
+    <section id="universe" class="section">
+      <p class="kicker" data-reveal>02 · Обитатели Вселенной</p>
+      <h2 class="title" data-type>Что живёт в темноте</h2>
+      <p class="sub" data-vacuum>Снимки «Хаббла», «Уэбба» и наземных обсерваторий: от колыбелей звёзд до тени чёрной дыры.</p>
+
+      <div class="bento">
+        <article class="b-card card tilt b-xl" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Столпы Творения, снимок телескопа Хаббл" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Pillars_of_creation_2014_HST_WFC3-UVIS_full-res.jpg/960px-Pillars_of_creation_2014_HST_WFC3-UVIS_full-res.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Туманности</span>
+            <h3>Столпы Творения</h3>
+            <p>Колонны газа и пыли высотой <b data-count="5">0</b> световых лет в туманности Орла. Внутри них прямо сейчас сжимаются облака, из которых зажгутся новые звёзды.</p>
+          </div>
+          <span class="credit">NASA / ESA / Hubble</span>
+        </article>
+
+        <article class="b-card card tilt b-tall" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Тень чёрной дыры Стрелец A*, Event Horizon Telescope" src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/EHT_Saggitarius_A_black_hole.tif/lossy-page1-1280px-EHT_Saggitarius_A_black_hole.tif.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Чёрные дыры</span>
+            <h3>Стрелец A*</h3>
+            <p>Сердце Млечного Пути: <b data-count="4.3" data-decimals="1">0</b> млн масс Солнца в области меньше орбиты Меркурия. Даже свет отсюда не возвращается.</p>
+          </div>
+          <span class="credit">Event Horizon Telescope</span>
+        </article>
+
+        <article class="b-card card tilt" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Звёздное скопление Плеяды" src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Pleiades_large.jpg/960px-Pleiades_large.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Скопления</span>
+            <h3>Плеяды</h3>
+            <p>Сёстры, рождённые из одного облака около <b data-count="100">0</b> млн лет назад.</p>
+          </div>
+        </article>
+
+        <article class="b-card card tilt" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Крабовидная туманность" src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Crab_Nebula.jpg/960px-Crab_Nebula.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Сверхновые</span>
+            <h3>Крабовидная туманность</h3>
+            <p>Обломки звезды, взорвавшейся в <b data-count="1054">0</b> году. В центре вращается пульсар — 30 оборотов в секунду.</p>
+          </div>
+        </article>
+
+        <article class="b-card card tilt b-wide" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Туманность Киля" src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Carina_Nebula.jpg/960px-Carina_Nebula.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Звёздные колыбели</span>
+            <h3>Туманность Киля</h3>
+            <p>Одна из крупнейших туманностей неба — в <b data-count="100">0</b> раз больше Туманности Ориона. Внутри живёт Эта Киля, гипергигант на грани взрыва.</p>
+          </div>
+        </article>
+
+        <article class="b-card card tilt" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Туманность Улитка" src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/NGC7293_%282004%29.jpg/960px-NGC7293_%282004%29.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Смерть звезды</span>
+            <h3>Туманность Улитка</h3>
+            <p>Так через миллиарды лет закончит жизнь Солнце: сбросит оболочку и станет белым карликом.</p>
+          </div>
+        </article>
+
+        <article class="b-card card tilt" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Облака Ро Змееносца, снимок JWST" src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Rho_Ophiuchi_cloud_complex_%28weic2316a%29.jpg/960px-Rho_Ophiuchi_cloud_complex_%28weic2316a%29.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">JWST</span>
+            <h3>Ро Змееносца</h3>
+            <p>Ближайший роддом звёзд — всего <b data-count="390">0</b> световых лет от нас.</p>
+          </div>
+        </article>
+
+        <article class="b-card card tilt b-wide" data-reveal>
+          <figure class="b-img"><img loading="lazy" alt="Шаровое скопление Омега Центавра" src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Globular_star_cluster_Omega_Centauri_%28NGC_5139%2C_by_the_Hubble_Space_Telescope%29.jpg/960px-Globular_star_cluster_Omega_Centauri_%28NGC_5139%2C_by_the_Hubble_Space_Telescope%29.jpg"></figure>
+          <div class="b-body">
+            <span class="tag">Древние звёзды</span>
+            <h3>Омега Центавра</h3>
+            <p>Почти <b data-count="10">0</b> млн звёзд в одном шаре возрастом около 12 млрд лет — возможно, ядро съеденной Млечным Путём галактики.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ ИСТОРИЯ АСТРОНОМИИ ═══════════════════ -->
+    <section id="history" class="section">
+      <p class="kicker" data-reveal>03 · История астрономии</p>
+      <h2 class="title" data-type>Пять тысяч лет взгляда вверх</h2>
+      <p class="sub" data-vacuum>От камней, отмечающих солнцестояние, до телескопа, который видит первые галактики.</p>
+
+      <div class="timeline">
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><i>≈ </i><b data-count="3000">0</b><i> до н. э.</i></span>
+          <h3>Первые обсерватории</h3>
+          <p>Мегалиты вроде Стоунхенджа отмечают солнцестояния, вавилонские жрецы записывают движение планет на глиняных табличках.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><i>≈ </i><b data-count="150">0</b><i> н. э.</i></span>
+          <h3>Птолемей, «Альмагест»</h3>
+          <p>Геоцентрическая модель: Земля в центре, планеты на эпициклах. Ей будут верить почти 1400 лет.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1543">0</b></span>
+          <h3>Николай Коперник</h3>
+          <p>«О вращении небесных сфер»: в центре — Солнце, Земля — лишь одна из планет.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1609">0</b></span>
+          <h3>Кеплер и Галилей</h3>
+          <p>Кеплер доказывает, что орбиты — эллипсы. Галилей направляет телескоп в небо и видит спутники Юпитера и фазы Венеры.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1687">0</b></span>
+          <h3>Исаак Ньютон</h3>
+          <p>«Математические начала»: одна сила тяготения управляет и падающим яблоком, и Луной.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1915">0</b></span>
+          <h3>Общая теория относительности</h3>
+          <p>Эйнштейн показывает: гравитация — это искривление пространства-времени массой.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1929">0</b></span>
+          <h3>Вселенная расширяется</h3>
+          <p>Эдвин Хаббл замечает: чем дальше галактика, тем быстрее она от нас удаляется.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1957">0</b></span>
+          <h3>«Спутник-1»</h3>
+          <p>Первый искусственный спутник Земли — 58 сантиметров и знаменитое «бип-бип».</p>
+        </article>
+        <article class="t-card card tilt accent" data-reveal>
+          <span class="year"><b data-count="1961">0</b></span>
+          <h3>Юрий Гагарин</h3>
+          <p>12 апреля: первый человек в космосе. Полёт вокруг Земли длился 108 минут.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1969">0</b></span>
+          <h3>«Аполлон-11»</h3>
+          <p>Нил Армстронг и Базз Олдрин ступают на Луну. Следы на реголите сохранятся миллионы лет.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1990">0</b></span>
+          <h3>Телескоп «Хаббл»</h3>
+          <p>Обсерватория над атмосферой: глубокие поля, возраст Вселенной, ускоренное расширение.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="1995">0</b></span>
+          <h3>Первая экзопланета</h3>
+          <p>51 Пегаса b — горячий юпитер у звезды, похожей на Солнце. Сегодня их известно больше шести тысяч.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="2015">0</b></span>
+          <h3>Гравитационные волны</h3>
+          <p>LIGO «слышит» слияние двух чёрных дыр за 1,3 млрд световых лет — рябь пространства-времени.</p>
+        </article>
+        <article class="t-card card tilt" data-reveal>
+          <span class="year"><b data-count="2019">0</b></span>
+          <h3>Тень чёрной дыры</h3>
+          <p>Event Horizon Telescope показывает первое изображение тени чёрной дыры в галактике M87.</p>
+        </article>
+        <article class="t-card card tilt accent" data-reveal>
+          <span class="year"><b data-count="2021">0</b></span>
+          <h3>Телескоп «Джеймс Уэбб»</h3>
+          <p>Золотое зеркало 6,5 м в инфракрасном свете видит галактики, родившиеся вскоре после Большого взрыва.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ ОБЩАЯ ТЕОРИЯ ═══════════════════ -->
+    <section id="theory" class="section">
+      <p class="kicker" data-reveal>04 · Общая теория</p>
+      <h2 class="title" data-type>Как устроена Вселенная</h2>
+      <p class="sub" data-vacuum>Несколько идей, без которых не понять ни одну звезду. Наведите на карточку, чтобы увидеть факт.</p>
+
+      <div class="bento theory">
+        <article class="th-card card tilt th-big" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="9" /><ellipse cx="32" cy="32" rx="26" ry="9" /><ellipse cx="32" cy="32" rx="18" ry="5" opacity=".5" /></svg>
+          <h3>Гравитация</h3>
+          <p>Сила, которая собирает газ в звёзды, звёзды — в галактики, а галактики — в скопления. По Эйнштейну, масса искривляет пространство-время, и тела просто движутся по этим «вмятинам».</p>
+          <p class="fact">На поверхности нейтронной звезды сила тяжести примерно в <b data-count="200">0</b> млрд раз больше земной.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 44 L30 20 L34 24 L10 48z" /><path d="M34 24 L58 14" /><path d="M34 24 L58 24" opacity=".8" /><path d="M34 24 L58 34" opacity=".6" /><path d="M34 24 L58 44" opacity=".4" /></svg>
+          <h3>Свет и спектр</h3>
+          <p>Разложив свет звезды в радугу, астрономы узнают её состав, температуру и скорость — не прикасаясь к ней.</p>
+          <p class="fact">Гелий нашли в спектре Солнца в <b data-count="1868">0</b> году — раньше, чем на Земле.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="12" cy="32" r="4" /><circle cx="28" cy="32" r="7" /><circle cx="48" cy="32" r="12" /><path d="M48 14 v-6 M48 56 v-6 M30 32 h4" opacity=".5" /></svg>
+          <h3>Жизнь звезды</h3>
+          <p>Облако → протозвезда → главная последовательность → гигант → белый карлик, нейтронная звезда или чёрная дыра.</p>
+          <p class="fact">Солнце станет красным гигантом примерно через <b data-count="5">0</b> млрд лет.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="3" /><path d="M32 6v10M32 48v10M6 32h10M48 32h10M13 13l7 7M44 44l7 7M51 13l-7 7M20 44l-7 7" /></svg>
+          <h3>Большой взрыв</h3>
+          <p>13,8 млрд лет назад Вселенная была горячей и плотной точкой и с тех пор расширяется. Её эхо — реликтовое излучение.</p>
+          <p class="fact">Реликтовое излучение случайно открыли в <b data-count="1965">0</b> году, приняв его сначала за помехи антенны.</p>
+        </article>
+        <article class="th-card card tilt th-wide" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" opacity=".35" /><path d="M32 6 A26 26 0 0 1 56 42 L32 32z" /><path d="M32 32 L56 42 A26 26 0 0 1 46 54z" opacity=".6" /></svg>
+          <h3>Тёмная материя и тёмная энергия</h3>
+          <p>Обычное вещество — около <b data-count="5">0</b>% Вселенной. Тёмная материя (<b data-count="27">0</b>%) держит галактики вместе, тёмная энергия (<b data-count="68">0</b>%) разгоняет расширение. Мы видим их только по влиянию на видимое.</p>
+          <p class="fact">Вера Рубин в 1970-х заметила: края галактик вращаются слишком быстро — значит, там есть невидимая масса.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="32" cy="32" rx="26" ry="16" /><circle cx="22" cy="32" r="5" /><circle cx="56" cy="30" r="3" /></svg>
+          <h3>Законы Кеплера</h3>
+          <p>Планеты движутся по эллипсам, у Солнца — быстрее, а квадрат периода пропорционален кубу размера орбиты.</p>
+          <p class="fact">Скорость Земли на орбите меняется от 29,3 до <b data-count="30.3" data-decimals="1">0</b> км/с.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" /><path d="M32 14v18l12 8" /></svg>
+          <h3>Время относительно</h3>
+          <p>Рядом с массой и на большой скорости часы идут медленнее. Это не теория на бумаге — это инженерия.</p>
+          <p class="fact">Часы спутников GPS уходят вперёд на <b data-count="38">0</b> мкс в сутки — без поправки навигатор ошибался бы на километры.</p>
+        </article>
+        <article class="th-card card tilt" data-reveal>
+          <svg class="ico" viewBox="0 0 64 64" aria-hidden="true"><circle cx="10" cy="32" r="6" /><path d="M18 32h38" stroke-dasharray="4 4" /><path d="M50 26l6 6-6 6" /></svg>
+          <h3>Световой год</h3>
+          <p>Расстояние, которое свет проходит за год, — около 9,46 трлн километров. Глядя на звёзды, мы смотрим в прошлое.</p>
+          <p class="fact">Свет Солнца летит до нас <b data-count="8">0</b> минут 20 секунд.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ МОДЕЛЬ СОЛНЕЧНОЙ СИСТЕМЫ ═══════════════════ -->
+    <section id="solar" class="section wide">
+      <p class="kicker" data-reveal>05 · Интерактивная модель</p>
+      <h2 class="title" data-type>Солнечная система</h2>
+      <p class="sub" data-vacuum>Вращайте мышью, кликайте по планетам, ускоряйте время. Пояс астероидов, спутники, комета и пояс Койпера — всё в одной сцене.</p>
+
+      <div class="model" id="solar-model">
+        <div class="stage" data-stage>
+          <div class="stage-loading"><span class="spinner"></span>Загружаем планеты…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ ЭКСПЕРИМЕНТЫ ═══════════════════ -->
+    <section id="lab" class="section wide">
+      <p class="kicker" data-reveal>06 · Лаборатория «Что если…»</p>
+      <h2 class="title" data-type>Космические эксперименты</h2>
+      <p class="sub" data-vacuum>Пять сценариев, которые нельзя поставить в реальности. Крутите параметры — физика пересчитывается вживую.</p>
+
+      <div class="experiments">
+        <article class="exp" data-experiment="blackhole">
+          <div class="stage" data-stage><div class="stage-loading"><span class="spinner"></span>Готовим сцену…</div></div>
+          <div class="exp-panel">
+            <span class="exp-num">01</span>
+            <h3>Земля у чёрной дыры</h3>
+            <p class="exp-blurb">Подтянем Землю к чёрной дыре: приливный разрыв, замедление времени и горизонт событий.</p>
+            <div class="exp-controls"></div>
+          </div>
+        </article>
+        <article class="exp alt" data-experiment="collision">
+          <div class="stage" data-stage><div class="stage-loading"><span class="spinner"></span>Готовим сцену…</div></div>
+          <div class="exp-panel">
+            <span class="exp-num">02</span>
+            <h3>Столкновение планет</h3>
+            <p class="exp-blurb">Две планеты летят навстречу. Меняйте тела, скорость и угол — получится слияние, облако обломков или почти рикошет.</p>
+            <div class="exp-controls"></div>
+          </div>
+        </article>
+        <article class="exp" data-experiment="asteroid">
+          <div class="stage" data-stage><div class="stage-loading"><span class="spinner"></span>Готовим сцену…</div></div>
+          <div class="exp-panel">
+            <span class="exp-num">03</span>
+            <h3>Удар астероида</h3>
+            <p class="exp-blurb">Камень или железо летит в Землю. Диаметр и скорость решают: Челябинск, Чиксулуб или конец цивилизации.</p>
+            <div class="exp-controls"></div>
+          </div>
+        </article>
+        <article class="exp alt" data-experiment="supernova">
+          <div class="stage" data-stage><div class="stage-loading"><span class="spinner"></span>Готовим сцену…</div></div>
+          <div class="exp-panel">
+            <span class="exp-num">04</span>
+            <h3>Сверхновая по соседству</h3>
+            <p class="exp-blurb">Рядом взрывается звезда. Меняйте массу и расстояние — от северного сияния до стерилизации планеты.</p>
+            <div class="exp-controls"></div>
+          </div>
+        </article>
+        <article class="exp" data-experiment="roche">
+          <div class="stage" data-stage><div class="stage-loading"><span class="spinner"></span>Готовим сцену…</div></div>
+          <div class="exp-panel">
+            <span class="exp-num">05</span>
+            <h3>Луна слишком близко</h3>
+            <p class="exp-blurb">Подносите Луну к Земле: приливы растут, океан наступает на сушу, а за пределом Роша спутник рвётся в кольцо.</p>
+            <div class="exp-controls"></div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-brand">Space Reacher</div>
+    <p data-vacuum>Смотрите вверх чаще — там всё ещё много неоткрытого.</p>
+    <p class="credits">
+      Текстуры планет: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0).
+      Фотографии: NASA, ESA, CSA, ESO, Event Horizon Telescope через Wikimedia Commons. 3D: three.js.
+    </p>
+  </footer>
+
+  <script type="module" src="js/main.js?v=20"></script>
 </body>
 </html>

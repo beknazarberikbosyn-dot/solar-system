@@ -1,19 +1,11 @@
+// ═══════════════════════════════════════════════════════════════════════
+// Эксперименты «Что если…»: каждый сценарий — отдельная карточка со своей
+// 3D-сценой, параметрами и телеметрией прямо на странице.
+// ═══════════════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import { createPlanet } from './planets.js';
+import { createStage, addStarfield } from './stage.js';
 
-const canvas = document.getElementById('scene');
-const statusEl = document.getElementById('sim-status');
-const loadingEl = document.getElementById('loading');
-const tabsEl = document.getElementById('scenario-tabs');
-const descEl = document.getElementById('scenario-desc');
-const paramList = document.getElementById('param-list');
-const playBtn = document.getElementById('btn-play');
-const resetBtn = document.getElementById('btn-reset');
-const storyEl = document.getElementById('readout-story');
-const gridEl = document.getElementById('readout-grid');
-const badgeEl = document.getElementById('mode-badge');
-
-const TEX = 'https://www.solarsystemscope.com/textures/download';
 const G = 6.6743e-11;
 const C = 299792458;
 const MSUN = 1.98847e30;
@@ -21,44 +13,15 @@ const MEARTH = 5.972e24;
 const REARTH = 6.371e6;
 
 const PLANETS = {
-  mercury: { name: 'Меркурий', mass: 3.3e23, radiusKm: 2440, color: 0xaaaaaa, tex: `${TEX}/2k_mercury.jpg` },
-  venus:   { name: 'Венера',   mass: 4.87e24, radiusKm: 6052, color: 0xe8cda0, tex: `${TEX}/2k_venus_surface.jpg` },
-  earth:   { name: 'Земля',    mass: MEARTH,  radiusKm: 6371, color: 0x4488ff, tex: `${TEX}/2k_earth_daymap.jpg` },
-  moon:    { name: 'Луна',     mass: 7.35e22, radiusKm: 1737, color: 0xbbbbbb, tex: `${TEX}/2k_moon.jpg` },
-  mars:    { name: 'Марс',     mass: 6.42e23, radiusKm: 3390, color: 0xff4422, tex: `${TEX}/2k_mars.jpg` },
-  jupiter: { name: 'Юпитер',   mass: 1.9e27,  radiusKm: 69911, color: 0xd4a574, tex: `${TEX}/2k_jupiter.jpg` },
-  saturn:  { name: 'Сатурн',   mass: 5.68e26, radiusKm: 58232, color: 0xc9b896, tex: `${TEX}/2k_saturn.jpg` },
+  mercury: { name: 'Меркурий', mass: 3.3e23, radiusKm: 2440 },
+  venus:   { name: 'Венера',   mass: 4.87e24, radiusKm: 6052 },
+  earth:   { name: 'Земля',    mass: MEARTH,  radiusKm: 6371 },
+  moon:    { name: 'Луна',     mass: 7.35e22, radiusKm: 1737 },
+  mars:    { name: 'Марс',     mass: 6.42e23, radiusKm: 3390 },
+  jupiter: { name: 'Юпитер',   mass: 1.9e27,  radiusKm: 69911 },
+  saturn:  { name: 'Сатурн',   mass: 5.68e26, radiusKm: 58232 },
 };
-
 const PLANET_OPTS = Object.entries(PLANETS).map(([id, p]) => ({ id, label: p.name }));
-
-// ─── Three.js ────────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.08, 800);
-const simRoot = new THREE.Group();
-scene.add(simRoot);
-
-scene.add(new THREE.AmbientLight(0x3a4a66, 0.7));
-scene.add(new THREE.HemisphereLight(0x9aafd0, 0x080814, 0.5));
-const keyLight = new THREE.PointLight(0xfff2d0, 5.2, 220, 0.45);
-keyLight.position.set(18, 14, 22);
-scene.add(keyLight);
-
-(function addStars() {
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(4500 * 3);
-  for (let i = 0; i < pos.length; i++) pos[i] = (Math.random() - 0.5) * 520;
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.42 })));
-})();
-
 
 const _glow = {};
 function glowSprite(color) {
@@ -81,30 +44,65 @@ function glowSprite(color) {
   return tex;
 }
 
-function accretionTexture() {
+// Аккреционный диск: закрученные полосы и доплеровская асимметрия
+function accretionMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uIn: { value: 2.5 }, uOut: { value: 9.2 } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `
+      uniform float uTime, uIn, uOut;
+      varying vec3 vP;
+      float hash(float n){ return fract(sin(n) * 43758.5453); }
+      void main(){
+        float r = length(vP.xy);
+        float u = clamp((r - uIn) / (uOut - uIn), 0.0, 1.0);
+        float a = atan(vP.y, vP.x);
+        float swirl = a + uTime * (1.6 / (0.35 + u * 2.0)) + log(r) * 3.0;
+        float bands = 0.55 + 0.45 * sin(swirl * 6.0) * sin(swirl * 2.0 + u * 20.0);
+        float streak = 0.7 + 0.3 * sin(u * 60.0 + sin(a * 3.0 + uTime) * 2.0);
+        vec3 hot = vec3(1.0, 0.95, 0.85);
+        vec3 warm = vec3(1.0, 0.55, 0.18);
+        vec3 cool = vec3(0.55, 0.12, 0.05);
+        vec3 col = mix(hot, warm, smoothstep(0.0, 0.35, u));
+        col = mix(col, cool, smoothstep(0.35, 1.0, u));
+        float dopp = 0.65 + 0.55 * sin(a);
+        float fade = smoothstep(0.0, 0.05, u) * (1.0 - smoothstep(0.6, 1.0, u));
+        float I = fade * bands * streak * dopp;
+        gl_FragColor = vec4(col * I * 2.2, clamp(I, 0.0, 1.0));
+      }`,
+    transparent: true,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
+// Линзированное изображение задней части диска (кольцо вокруг тени)
+function lensRingTexture() {
   const c = document.createElement('canvas');
-  c.width = 512; c.height = 512;
-  const ctx = c.getContext('2d');
-  const grad = ctx.createRadialGradient(256, 256, 70, 256, 256, 256);
-  grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-  grad.addColorStop(0.28, 'rgba(255,200,90,0.92)');
-  grad.addColorStop(0.62, 'rgba(255,90,30,0.55)');
-  grad.addColorStop(1, 'rgba(80,10,8,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 512, 512);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(128, 128, 70, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(255,200,120,0)');
+  grd.addColorStop(0.22, 'rgba(255,240,210,0.95)');
+  grd.addColorStop(0.32, 'rgba(255,170,80,0.55)');
+  grd.addColorStop(0.6, 'rgba(255,110,40,0.12)');
+  grd.addColorStop(1, 'rgba(255,90,30,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function visRadius(p) {
   return 0.42 + Math.pow(p.radiusKm / 6371, 0.42) * 0.72;
 }
 
-async function makePlanetMesh(id, scale = 1) {
+async function makePlanetMesh(id, scale = 1, opts = {}) {
   const p = PLANETS[id];
   const r = visRadius(p) * scale;
-  const body = await createPlanet(id, { radius: r });
+  const body = await createPlanet(id, { radius: r, segments: 72, ...opts });
   body.mesh.userData.r = r;
   body.mesh.userData.id = id;
   return body.mesh;
@@ -115,9 +113,9 @@ function makeParticles(count, color, size = 0.08) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-    color, size, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    color, size, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
+  pts.frustumCulled = false;
   const vel = Array.from({ length: count }, () => new THREE.Vector3());
   const life = new Float32Array(count);
   return { pts, vel, life, count, pos };
@@ -126,10 +124,7 @@ function makeParticles(count, color, size = 0.08) {
 function disposeGroup(group) {
   group.traverse((obj) => {
     if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) {
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m) => m.dispose?.());
-    }
+    if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => m.dispose?.());
   });
   while (group.children.length) group.remove(group.children[0]);
 }
@@ -139,7 +134,7 @@ function fmt(n, digits = 2) {
   const a = Math.abs(n);
   if (a >= 1e12) {
     const exp = Math.floor(Math.log10(a));
-    return (n / 10 ** exp).toFixed(1) + '×10' + exp;
+    return (n / 10 ** exp).toFixed(1) + '×10' + String(exp).split('').map((d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]).join('');
   }
   if (a >= 1e9) return (n / 1e9).toFixed(1) + ' млрд';
   if (a >= 1e6) return (n / 1e6).toFixed(1) + ' млн';
@@ -174,19 +169,17 @@ const SCENARIOS = [
       { key: 'spin', type: 'range', label: 'Орбитальный момент', min: 0, max: 1, step: 0.01, value: 0.55, format: (v) => (v * 100).toFixed(0) + '%' },
       { key: 'timeScale', type: 'range', label: 'Скорость времени', min: 0.15, max: 8, step: 0.05, value: 1.2, format: (v) => v.toFixed(2) + '×' },
     ],
-    async create() {
+    async create(root) {
       const g = new THREE.Group();
       const hole = new THREE.Mesh(
         new THREE.SphereGeometry(2.15, 48, 48),
         new THREE.MeshBasicMaterial({ color: 0x000000 }),
       );
-      const disk = new THREE.Mesh(
-        new THREE.RingGeometry(2.6, 8.4, 96),
-        new THREE.MeshBasicMaterial({
-          map: accretionTexture(), transparent: true, side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending, depthWrite: false,
-        }),
-      );
+      const disk = new THREE.Mesh(new THREE.RingGeometry(2.5, 9.2, 160, 4), accretionMaterial());
+      const lensed = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: lensRingTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.95,
+      }));
+      lensed.scale.set(7.4, 7.4, 1);
       disk.rotation.x = Math.PI / 2.15;
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowSprite(0xffcc66), transparent: true, blending: THREE.AdditiveBlending,
@@ -214,8 +207,8 @@ const SCENARIOS = [
       earth.add(atmo, earthGlow);
 
       const trail = makeParticles(180, 0xffaa66, 0.07);
-      g.add(hole, disk, halo, ring, earth, trail.pts, diskLight);
-      simRoot.add(g);
+      g.add(hole, disk, lensed, halo, ring, earth, trail.pts, diskLight);
+      root.add(g);
 
       const st = {
         theta: 0, rCoord: 12, swallowed: false, tFar: 0, tEarth: 0,
@@ -240,7 +233,7 @@ const SCENARIOS = [
         earth.userData.setHeat?.(st.heating, new THREE.Vector3(0, 0, 0));
         earth.userData.tick?.(0.016);
         earth.visible = !st.swallowed;
-        disk.rotation.z += 0.004;
+        disk.material.uniforms.uTime.value = performance.now() / 1000;
         ring.rotation.z -= 0.01;
         return { rs, r, vis, tidal };
       }
@@ -327,7 +320,7 @@ const SCENARIOS = [
             ],
           };
         },
-        dispose() { disposeGroup(g); simRoot.remove(g); },
+        dispose() { disposeGroup(g); root.remove(g); },
       };
     },
   },
@@ -343,7 +336,7 @@ const SCENARIOS = [
       { key: 'angle', type: 'range', label: 'Угол удара', min: 0, max: 35, step: 1, value: 8, format: (v) => v.toFixed(0) + '°' },
       { key: 'timeScale', type: 'range', label: 'Скорость времени', min: 0.2, max: 6, step: 0.05, value: 1, format: (v) => v.toFixed(2) + '×' },
     ],
-    async create() {
+    async create(root) {
       const g = new THREE.Group();
       let aMesh = null, bMesh = null;
       const debris = makeParticles(520, 0xffcc88, 0.09);
@@ -353,7 +346,7 @@ const SCENARIOS = [
       }));
       flash.scale.set(1, 1, 1);
       g.add(debris.pts, flash);
-      simRoot.add(g);
+      root.add(g);
 
       const st = {
         ax: -16, az: 0, bx: 16, bz: 0,
@@ -488,7 +481,7 @@ const SCENARIOS = [
             ],
           };
         },
-        dispose() { disposeGroup(g); simRoot.remove(g); },
+        dispose() { disposeGroup(g); root.remove(g); },
       };
     },
   },
@@ -504,7 +497,7 @@ const SCENARIOS = [
       { key: 'angle', type: 'range', label: 'Угол к горизонту', min: 15, max: 90, step: 1, value: 45, format: (v) => v + '°' },
       { key: 'timeScale', type: 'range', label: 'Скорость времени', min: 0.2, max: 8, step: 0.05, value: 1.4, format: (v) => v.toFixed(2) + '×' },
     ],
-    async create() {
+    async create(root) {
       const g = new THREE.Group();
       const earth = await makePlanetMesh('earth', 1.35);
       const rockGeo = new THREE.IcosahedronGeometry(0.22, 1);
@@ -531,7 +524,7 @@ const SCENARIOS = [
       );
       shock.rotation.x = -0.6;
       g.add(earth, rock, trail.pts, ejecta.pts, flash, shock);
-      simRoot.add(g);
+      root.add(g);
 
       const st = { t: 0, hit: false, crater: 0, energyMt: 0, u: 0 };
 
@@ -636,7 +629,7 @@ const SCENARIOS = [
             ],
           };
         },
-        dispose() { disposeGroup(g); simRoot.remove(g); },
+        dispose() { disposeGroup(g); root.remove(g); },
       };
     },
   },
@@ -650,19 +643,19 @@ const SCENARIOS = [
       { key: 'distLy', type: 'range', label: 'Расстояние', min: 8, max: 200, step: 1, value: 50, format: (v) => v + ' св. лет' },
       { key: 'timeScale', type: 'range', label: 'Скорость времени', min: 0.2, max: 6, step: 0.05, value: 1, format: (v) => v.toFixed(2) + '×' },
     ],
-    async create() {
+    async create(root) {
       const g = new THREE.Group();
       const star = new THREE.Mesh(
         new THREE.SphereGeometry(2.4, 48, 48),
-        new THREE.MeshBasicMaterial({ color: 0xffdd88 }),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffdd88).multiplyScalar(2.2) }),
       );
-      const corona = new THREE.Mesh(
-        new THREE.SphereGeometry(3.3, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.18, depthWrite: false }),
-      );
+      const corona = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowSprite(0xffaa44), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      corona.scale.set(13, 13, 1);
       const blast = new THREE.Mesh(
         new THREE.SphereGeometry(1, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0xffeecc, transparent: true, opacity: 0, depthWrite: false, side: THREE.BackSide }),
+        new THREE.MeshBasicMaterial({ color: 0xffc98a, transparent: true, opacity: 0, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending }),
       );
       const remnant = new THREE.Mesh(
         new THREE.SphereGeometry(0.35, 16, 16),
@@ -675,7 +668,7 @@ const SCENARIOS = [
       const shockLight = new THREE.PointLight(0xffaa66, 0, 80, 1.2);
       shockLight.position.set(0, 0, 0);
       g.add(star, corona, blast, remnant, earth, spray.pts, sear.pts, shockLight);
-      simRoot.add(g);
+      root.add(g);
 
       const st = { phase: 0, t: 0, heat: 0 };
 
@@ -690,6 +683,9 @@ const SCENARIOS = [
         reset(p) {
           st.phase = 0; st.t = 0; st.heat = 0;
           star.visible = true;
+          corona.visible = true;
+          corona.scale.set(13, 13, 1);
+          star.scale.setScalar(1);
           remnant.visible = false;
           blast.scale.setScalar(1);
           blast.material.opacity = 0;
@@ -709,8 +705,8 @@ const SCENARIOS = [
           if (st.phase === 0) {
             const swell = 1 + Math.min(1.8, st.t * 0.55);
             star.scale.setScalar(swell);
-            corona.scale.setScalar(swell);
-            star.material.color.setHSL(0.08 - st.t * 0.01, 0.85, 0.6);
+            corona.scale.setScalar(13 * swell);
+            star.material.color.setHSL(0.08 - st.t * 0.01, 0.85, 0.6).multiplyScalar(2.2);
             shockLight.intensity = 1.2 + swell * 0.6;
             if (st.t > 3.2) { st.phase = 1; st.t = 0; }
           } else if (st.phase === 1) {
@@ -719,6 +715,7 @@ const SCENARIOS = [
             if (st.t > 0.55) {
               st.phase = 2; st.t = 0;
               star.visible = false;
+              corona.visible = false;
               remnant.visible = p.mass >= 20;
               remnant.material.color.set(p.mass >= 25 ? 0x000000 : 0xaaccff);
               for (let i = 0; i < spray.count; i++) {
@@ -731,8 +728,8 @@ const SCENARIOS = [
               }
             }
           } else {
-            blast.scale.setScalar(1 + st.t * 9);
-            blast.material.opacity = Math.max(0, 0.55 - st.t * 0.12);
+            blast.scale.setScalar(Math.min(42, 1 + st.t * 9));
+            blast.material.opacity = Math.max(0, 0.32 - st.t * 0.09);
             remnant.rotation.y += 0.2;
             shockLight.intensity = Math.max(0, 14 - st.t * 2.2);
             for (let i = 0; i < spray.count; i++) {
@@ -793,7 +790,7 @@ const SCENARIOS = [
             ],
           };
         },
-        dispose() { disposeGroup(g); simRoot.remove(g); },
+        dispose() { disposeGroup(g); root.remove(g); },
       };
     },
   },
@@ -806,9 +803,9 @@ const SCENARIOS = [
       { key: 'dist', type: 'range', label: 'Расстояние', min: 8000, max: 384000, step: 1000, value: 120000, format: (v) => fmt(v, 0) + ' км' },
       { key: 'timeScale', type: 'range', label: 'Скорость времени', min: 0.2, max: 8, step: 0.05, value: 1.2, format: (v) => v.toFixed(2) + '×' },
     ],
-    async create() {
+    async create(root) {
       const g = new THREE.Group();
-      const earth = await makePlanetMesh('earth', 1.35);
+      const earth = await makePlanetMesh('earth', 1.35, { flood: true });
       const moon = await makePlanetMesh('moon', 1.1);
       const ringPts = makeParticles(420, 0xccbbaa, 0.05);
       const spray = makeParticles(180, 0x66bbee, 0.045);
@@ -820,7 +817,7 @@ const SCENARIOS = [
         }),
       );
       g.add(earth, moon, ringPts.pts, spray.pts, bulge);
-      simRoot.add(g);
+      root.add(g);
 
       const rocheKm = 2.44 * 6371 * Math.pow(5514 / 3344, 1 / 3);
       const st = { theta: 0, broken: false };
@@ -932,69 +929,97 @@ const SCENARIOS = [
             ],
           };
         },
-        dispose() { disposeGroup(g); simRoot.remove(g); },
+        dispose() { disposeGroup(g); root.remove(g); },
       };
     },
   },
 ];
 
-// ─── Состояние приложения ────────────────────────────────────────────────────
-const cam = { az: 0.7, el: 0.38, dist: 32, taz: 0.7, tel: 0.38, tdist: 32 };
-let dragging = false, lastX = 0, lastY = 0;
-let playing = false;
-let currentId = 'blackhole';
-let runner = null;
-let params = {};
-let lastStory = null;
 
-function applyCam() {
-  cam.az += (cam.taz - cam.az) * 0.1;
-  cam.el += (cam.tel - cam.el) * 0.1;
-  cam.dist += (cam.tdist - cam.dist) * 0.1;
-  const x = Math.sin(cam.az) * Math.cos(cam.el) * cam.dist;
-  const y = Math.sin(cam.el) * cam.dist;
-  const z = Math.cos(cam.az) * Math.cos(cam.el) * cam.dist;
-  camera.position.set(x, y, z);
-  camera.lookAt(0, 0, 0);
-}
+// ═══════════════════ Карточка эксперимента ═══════════════════════════
+const CAMERA_PRESET = {
+  blackhole: { dist: 27, el: 0.3 },
+  collision: { dist: 29, el: 0.36 },
+  asteroid: { dist: 19, el: 0.28 },
+  supernova: { dist: 34, el: 0.3 },
+  roche: { dist: 30, el: 0.42 },
+};
 
-canvas.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-window.addEventListener('pointerup', () => { dragging = false; });
-window.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  cam.taz -= (e.clientX - lastX) * 0.005;
-  cam.tel = THREE.MathUtils.clamp(cam.tel + (e.clientY - lastY) * 0.005, -1.2, 1.25);
-  lastX = e.clientX; lastY = e.clientY;
-});
-canvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  cam.tdist = THREE.MathUtils.clamp(cam.tdist * (1 + e.deltaY * 0.0012), 8, 90);
-}, { passive: false });
+export async function initExperiment(card, id) {
+  const sc = SCENARIOS.find((s) => s.id === id);
+  if (!sc) throw new Error('Нет сценария ' + id);
+  const stageEl = card.querySelector('[data-stage]');
+  const controlsEl = card.querySelector('.exp-controls');
+  const stage = createStage(stageEl, {
+    fov: 50, near: 0.08, far: 2000,
+    bloom: { strength: 0.75, radius: 0.5, threshold: 0.85 },
+    exposure: 1.12,
+  });
+  const { scene, camera, controls } = stage;
+  addStarfield(scene, { count: 3500, band: 5000, radius: 600 });
+  scene.add(new THREE.AmbientLight(0x3a4a66, 0.7));
+  scene.add(new THREE.HemisphereLight(0x9aafd0, 0x080814, 0.5));
+  const keyLight = new THREE.PointLight(0xfff2d0, 5.2, 220, 0.45);
+  keyLight.position.set(18, 14, 22);
+  scene.add(keyLight);
+  const root = new THREE.Group();
+  scene.add(root);
 
-function scenarioById(id) {
-  return SCENARIOS.find((s) => s.id === id);
-}
+  const preset = CAMERA_PRESET[id] || { dist: 32, el: 0.3 };
+  camera.position.set(0, Math.sin(preset.el) * preset.dist, Math.cos(preset.el) * preset.dist);
+  controls.target.set(0, 0, 0);
+  controls.minDistance = 7;
+  controls.maxDistance = 90;
 
-function defaultParams(sc) {
-  const o = {};
-  for (const p of sc.params) o[p.key] = p.value;
-  return o;
-}
+  // ─── UI ──────────────────────────────────────────────────────────
+  const params = {};
+  for (const p of sc.params) params[p.key] = p.value;
+  controlsEl.innerHTML = `
+    <div class="exp-params"></div>
+    <div class="exp-actions">
+      <button type="button" class="play">▶ Запуск</button>
+      <button type="button" class="reset">↺ Сброс</button>
+    </div>
+    <p class="exp-story">Загружаем сцену…</p>
+    <div class="exp-grid"></div>`;
+  const paramList = controlsEl.querySelector('.exp-params');
+  const playBtn = controlsEl.querySelector('.play');
+  const resetBtn = controlsEl.querySelector('.reset');
+  const storyEl = controlsEl.querySelector('.exp-story');
+  const gridEl = controlsEl.querySelector('.exp-grid');
 
-function renderTabs() {
-  tabsEl.innerHTML = '';
-  for (const s of SCENARIOS) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'sc-tab' + (s.id === currentId ? ' active' : '');
-    b.innerHTML = `<span class="ico">${s.icon}</span><span class="ttl">${s.title}</span>`;
-    b.addEventListener('click', () => switchScenario(s.id));
-    tabsEl.appendChild(b);
+  let runner = null;
+  let playing = false;
+  let lastInfo = null;
+  let lastDraw = 0;
+  let lastStory = '';
+
+  function drawReadout(info, force = false) {
+    if (!info) return;
+    const now = performance.now();
+    if (!force && now - lastDraw < 120) return;
+    lastDraw = now;
+    if (info.story !== lastStory) {
+      lastStory = info.story;
+      storyEl.textContent = info.story;
+    }
+    gridEl.innerHTML = info.cells.map((c) => `
+      <div class="cell ${c.wide ? 'wide' : ''} ${c.cls || ''}"><span>${c.label}</span><b>${c.value}</b></div>`).join('');
   }
-}
 
-function renderParams(sc) {
-  paramList.innerHTML = '';
+  async function restartQuiet() {
+    if (!runner?.reset) return;
+    await runner.reset(params);
+    lastInfo = runner.telemetry?.(params);
+    drawReadout(lastInfo, true);
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    playBtn.textContent = on ? '⏸ Пауза' : '▶ Запуск';
+    playBtn.classList.toggle('playing', on);
+  }
+
   for (const p of sc.params) {
     const wrap = document.createElement('div');
     wrap.className = 'param';
@@ -1003,11 +1028,11 @@ function renderParams(sc) {
     const lab = document.createElement('label');
     lab.textContent = p.label;
     const val = document.createElement('b');
-    val.dataset.key = p.key;
     head.append(lab, val);
     wrap.appendChild(head);
     if (p.type === 'select') {
       const sel = document.createElement('select');
+      sel.setAttribute('aria-label', p.label);
       for (const opt of p.options) {
         const o = document.createElement('option');
         o.value = opt.id;
@@ -1015,113 +1040,56 @@ function renderParams(sc) {
         if (opt.id === params[p.key]) o.selected = true;
         sel.appendChild(o);
       }
+      val.textContent = PLANETS[params[p.key]]?.name || params[p.key];
       sel.addEventListener('change', () => {
         params[p.key] = sel.value;
+        val.textContent = PLANETS[sel.value]?.name || sel.value;
+        setPlaying(false);
         restartQuiet();
       });
       wrap.appendChild(sel);
-      val.textContent = PLANETS[params[p.key]]?.name || params[p.key];
     } else {
       const input = document.createElement('input');
       input.type = 'range';
       input.min = p.min; input.max = p.max; input.step = p.step;
       input.value = params[p.key];
+      input.setAttribute('aria-label', p.label);
       const paint = () => {
         params[p.key] = Number(input.value);
         val.textContent = p.format ? p.format(params[p.key]) : String(params[p.key]);
+        input.style.setProperty('--fill', `${((params[p.key] - p.min) / (p.max - p.min)) * 100}%`);
       };
       input.addEventListener('input', () => {
         paint();
         if (!playing) runner?.reset?.(params);
-        lastStory = runner?.telemetry?.(params) || lastStory;
-        drawReadout(lastStory);
+        lastInfo = runner?.telemetry?.(params) || lastInfo;
+        drawReadout(lastInfo, true);
       });
-      wrap.appendChild(input);
       paint();
+      wrap.appendChild(input);
     }
     paramList.appendChild(wrap);
   }
-}
 
-function drawReadout(info) {
-  if (!info) return;
-  storyEl.textContent = info.story;
-  gridEl.innerHTML = info.cells.map((c) => `
-    <div class="cell ${c.wide ? 'wide' : ''} ${c.cls || ''}">
-      <span>${c.label}</span><b>${c.value}</b>
-    </div>
-  `).join('');
-}
+  playBtn.addEventListener('click', () => setPlaying(!playing));
+  resetBtn.addEventListener('click', () => { setPlaying(false); restartQuiet(); });
+  card.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, select, textarea')) return;
+    if (e.code === 'Space' && card.contains(document.activeElement)) { e.preventDefault(); setPlaying(!playing); }
+  });
 
-function setPlaying(on) {
-  playing = on;
-  playBtn.textContent = on ? '⏸ Пауза' : '▶ Запуск';
-  playBtn.classList.toggle('playing', on);
-  badgeEl.textContent = on ? 'Идёт симуляция' : 'Пауза / настройка';
-  badgeEl.className = on ? 'locked' : '';
-}
-
-async function restartQuiet() {
-  if (!runner?.reset) return;
+  runner = await sc.create(root);
   await runner.reset(params);
-  lastStory = runner.telemetry?.(params);
-  drawReadout(lastStory);
+  lastInfo = runner.telemetry?.(params);
+  drawReadout(lastInfo, true);
+
+  stage.onFrame = (dt) => {
+    if (!runner) return;
+    if (playing) {
+      const info = runner.update(dt, params);
+      if (info) { lastInfo = info; drawReadout(info); }
+    }
+  };
+  await stage.start();
+  return stage;
 }
-
-async function switchScenario(id) {
-  const sc = scenarioById(id);
-  currentId = id;
-  params = defaultParams(sc);
-  descEl.textContent = sc.blurb;
-  statusEl.textContent = sc.title;
-  renderTabs();
-  renderParams(sc);
-  setPlaying(false);
-  if (runner) runner.dispose();
-  runner = null;
-  lastStory = { story: 'Загружаем сцену…', cells: [] };
-  drawReadout(lastStory);
-  runner = await sc.create();
-  await runner.reset(params);
-  lastStory = runner.telemetry?.(params);
-  drawReadout(lastStory);
-  cam.taz = 0; cam.tel = 0.28; cam.tdist = id === 'blackhole' ? 28 : 34;
-  cam.az = cam.taz; cam.el = cam.tel; cam.dist = cam.tdist;
-}
-
-playBtn.addEventListener('click', () => setPlaying(!playing));
-resetBtn.addEventListener('click', () => {
-  setPlaying(false);
-  restartQuiet();
-});
-window.addEventListener('keydown', (e) => {
-  if (e.target.matches('input, select, textarea')) return;
-  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
-  if (e.code === 'KeyR') { setPlaying(false); restartQuiet(); }
-});
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-let last = performance.now();
-function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
-  last = now;
-  applyCam();
-  if (runner) {
-    const info = playing ? runner.update(dt, params) : lastStory;
-    if (info) { lastStory = info; drawReadout(info); }
-  }
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
-}
-
-(async function init() {
-  renderTabs();
-  await switchScenario('blackhole');
-  loadingEl.classList.add('hidden');
-  requestAnimationFrame(loop);
-})();
