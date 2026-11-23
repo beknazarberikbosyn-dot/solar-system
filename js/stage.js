@@ -9,6 +9,21 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// Прозрачность по яркости: пустой космос сцены прозрачен, свечение мягко
+// ложится на фон страницы, и у карточки не видно прямоугольника.
+const AlphaFromLuma = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float m = max(c.r, max(c.g, c.b));
+      float a = clamp(m * 1.7, 0.0, 1.0);
+      gl_FragColor = vec4(c.rgb, a);
+    }`,
+};
 import { setMaxAnisotropy } from './planets.js';
 
 const coarse = window.matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -26,12 +41,13 @@ export function createStage(stageEl, opts = {}) {
   canvas.setAttribute('tabindex', '0');
   stageEl.prepend(canvas);
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  // прозрачный холст: фон страницы виден сквозь сцену, поэтому у карточки нет границ
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = exposure;
-  renderer.setClearColor(0x03040a, 1);
+  renderer.setClearColor(0x000000, 0);
   setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
   const scene = new THREE.Scene();
@@ -53,6 +69,7 @@ export function createStage(stageEl, opts = {}) {
     bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), bloom.strength, bloom.radius, bloom.threshold);
     composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass(AlphaFromLuma));
   }
 
   // ─── активация управления ─────────────────────────────────────────

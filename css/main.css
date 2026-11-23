@@ -2,7 +2,7 @@
    Space Reacher — основной стиль
    ═══════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg: #04050d;
+  --bg: #050816;
   --bg-2: #080b1c;
   --ink: #eef0ff;
   --ink-2: #c9cdee;
@@ -37,9 +37,10 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(1200px 900px at 80% 120%, rgba(70, 40, 140, 0.18), transparent 70%),
-    radial-gradient(900px 700px at 0% 60%, rgba(20, 60, 140, 0.14), transparent 70%),
+    radial-gradient(120vw 90vh at 85% 100%, rgba(60, 36, 120, 0.16), transparent 70%),
+    radial-gradient(90vw 80vh at 0% 40%, rgba(20, 50, 120, 0.12), transparent 70%),
     var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 17px;
@@ -135,17 +136,13 @@ button { font: inherit; color: inherit; }
   overflow: hidden;
   background: #8fc6ff;
 }
-#hero::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 22%;
-  background: linear-gradient(to bottom, transparent, rgba(4, 5, 13, 0.55) 55%, var(--bg));
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1.2s;
+/* в космосе низ header растворяется в фоне страницы — без шва */
+#hero.space { background: transparent; }
+#hero-canvas { transition: -webkit-mask-size 1.2s, mask-size 1.2s; }
+#hero.space #hero-canvas {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, rgba(0, 0, 0, 0.55) 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, rgba(0, 0, 0, 0.55) 80%, transparent 100%);
 }
-#hero.space::after { opacity: 1; }
 
 #hero-canvas {
   position: absolute;

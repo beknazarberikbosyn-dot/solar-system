@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 import * as THREE from 'three';
 import { createPlanet } from './planets.js';
-import { createStage, addStarfield } from './stage.js';
+import { createStage } from './stage.js';
 
 const G = 6.6743e-11;
 const C = 299792458;
@@ -956,7 +956,6 @@ export async function initExperiment(card, id) {
     exposure: 1.12,
   });
   const { scene, camera, controls } = stage;
-  addStarfield(scene, { count: 3500, band: 5000, radius: 600 });
   scene.add(new THREE.AmbientLight(0x3a4a66, 0.7));
   scene.add(new THREE.HemisphereLight(0x9aafd0, 0x080814, 0.5));
   const keyLight = new THREE.PointLight(0xfff2d0, 5.2, 220, 0.45);

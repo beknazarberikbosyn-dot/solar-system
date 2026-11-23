@@ -10,6 +10,8 @@ import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ─── Утилиты ──────────────────────────────────────────────────────────
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -57,7 +59,8 @@ const SUN_DIR = new THREE.Vector3(-0.62, 0.5, 0.6).normalize();
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
 // Цвета еды/букв: оранжевый → розовый → фиолетовый → голубой
-const PASTE = ['#ff9f43', '#ff7a52', '#ff5e7e', '#f251a8', '#d65cd8', '#b26bff', '#8f7bff', '#6f8dff', '#58a8ff', '#48c6ff', '#45d6e6', '#5fe0c9'];
+// Один цвет для всего слова: красное полупрозрачное желе
+const PASTE = ['#e3141f'];
 
 // ─── Небо по высоте ──────────────────────────────────────────────────
 const SKY = [
@@ -65,7 +68,7 @@ const SKY = [
   { a: 0.22, top: '#2a63d8', bot: '#8cc0ff', hs: '#a9c8ff', hg: '#4a5a6a', hi: 1.0, glow: 0.55, gsize: 0.34, stars: 0, sun: 3.2 },
   { a: 0.46, top: '#0f2766', bot: '#3a72cf', hs: '#7b95d6', hg: '#243150', hi: 0.75, glow: 0.42, gsize: 0.24, stars: 0.05, sun: 3.3 },
   { a: 0.70, top: '#040820', bot: '#14306b', hs: '#4a5b9a', hg: '#121a33', hi: 0.5, glow: 0.38, gsize: 0.16, stars: 0.55, sun: 3.4 },
-  { a: 1.00, top: '#010208', bot: '#050a1c', hs: '#36447e', hg: '#05060d', hi: 0.32, glow: 0.42, gsize: 0.11, stars: 1, sun: 3.6 },
+  { a: 1.00, top: '#03040c', bot: '#050816', hs: '#36447e', hg: '#05060d', hi: 0.32, glow: 0.42, gsize: 0.11, stars: 1, sun: 3.6 },
 ].map((k) => ({
   ...k, top: new THREE.Color(k.top), bot: new THREE.Color(k.bot), hs: new THREE.Color(k.hs), hg: new THREE.Color(k.hg),
 }));
@@ -88,7 +91,8 @@ function sampleSky(alt) {
 }
 
 // ─── Материалы ────────────────────────────────────────────────────────
-const lowpoly = (color, o = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.62, metalness: 0.04, ...o });
+// Гладкий «игрушечный» пластик: высокая детализация, мягкий глянец, без видимых граней
+const lowpoly = (color, o = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, metalness: 0.02, clearcoat: 0.6, clearcoatRoughness: 0.25, ...o });
 
 function glowTexture(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)') {
   const c = document.createElement('canvas');
@@ -106,19 +110,68 @@ function glowTexture(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)
 }
 
 // Желейный материал: вершины колышутся и сплющиваются пружиной
-function jellyMaterial(color, phase) {
+// Неровная поверхность желе: карта нормалей из мягких бугорков
+let _jellyNormal = null;
+function jellyNormalMap() {
+  if (_jellyNormal) return _jellyNormal;
+  const N = 256;
+  const h = new Float32Array(N * N);
+  const rnd = mulberry32(42);
+  for (let k = 0; k < 90; k++) {
+    const cx = rnd() * N, cy = rnd() * N, r = 6 + rnd() * 26, a = (rnd() - 0.4) * 1.2;
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+      const d = Math.hypot(x, y) / r;
+      if (d > 1) continue;
+      const X = (Math.round(cx + x) + N) % N, Y = (Math.round(cy + y) + N) % N;
+      h[Y * N + X] += a * (Math.cos(d * Math.PI) * 0.5 + 0.5);
+    }
+  }
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d');
+  const img = g.createImageData(N, N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = h[y * N + (x + 1) % N] - h[y * N + (x - 1 + N) % N];
+    const dy = h[((y + 1) % N) * N + x] - h[((y - 1 + N) % N) * N + x];
+    const v = new THREE.Vector3(-dx * 2, -dy * 2, 1).normalize();
+    const i = (y * N + x) * 4;
+    img.data[i] = (v.x * 0.5 + 0.5) * 255; img.data[i + 1] = (v.y * 0.5 + 0.5) * 255; img.data[i + 2] = (v.z * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  _jellyNormal = new THREE.CanvasTexture(c);
+  _jellyNormal.wrapS = _jellyNormal.wrapT = THREE.RepeatWrapping;
+  _jellyNormal.repeat.set(0.9, 0.9);
+  return _jellyNormal;
+}
+
+// Полупрозрачное желе: свет проходит внутрь, окрашивается и бликует
+function jellyPhysical(color, extra = {}) {
   const c = new THREE.Color(color);
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: c,
-    roughness: 0.3,
+  return new THREE.MeshPhysicalMaterial({
+    color: c.clone().lerp(new THREE.Color('#ffffff'), 0.04),
+    roughness: 0.04,
     metalness: 0,
+    transmission: 0.9,
+    thickness: 0.35,
+    ior: 1.33,
+    attenuationColor: c,
+    attenuationDistance: 2.2,
+    transparent: true,
+    opacity: 0.88,
     clearcoat: 1,
-    clearcoatRoughness: 0.22,
-    sheen: 0.6,
-    sheenRoughness: 0.5,
-    sheenColor: c.clone().lerp(new THREE.Color('#ffffff'), 0.55),
-    emissive: c.clone().multiplyScalar(0.06),
+    clearcoatRoughness: 0.04,
+    specularIntensity: 1,
+    emissive: c.clone().multiplyScalar(0.22),
+    sheen: 0.15,
+    sheenColor: c.clone().lerp(new THREE.Color('#ffffff'), 0.6),
+    normalMap: jellyNormalMap(),
+    normalScale: new THREE.Vector2(0.22, 0.22),
+    ...extra,
   });
+}
+
+function jellyMaterial(color, phase) {
+  const mat = jellyPhysical(color);
   const u = {
     uTime: { value: 0 },
     uSquash: { value: 0 },
@@ -145,12 +198,7 @@ function jellyMaterial(color, phase) {
 
 // Еда в невесомости: бесформенные пульсирующие капли
 function blobMaterial(color) {
-  const c = new THREE.Color(color);
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: c, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.2,
-    sheen: 0.6, sheenColor: c.clone().lerp(new THREE.Color('#fff'), 0.5),
-    emissive: c.clone().multiplyScalar(0.08),
-  });
+  const mat = jellyPhysical(color, { thickness: 0.35, normalScale: new THREE.Vector2(0.1, 0.1) });
   const u = { uTime: { value: 0 } };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
@@ -178,28 +226,34 @@ function buildRocket() {
   const dark = lowpoly(0x3b4050, { roughness: 0.35, metalness: 0.55 });
   const metal = lowpoly(0xa9b6c8, { roughness: 0.28, metalness: 0.75 });
 
-  const lathe = (pts, mat, seg = 12) => {
-    const m = new THREE.Mesh(new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg), mat);
+  const lathe = (pts, mat, seg = 96) => {
+    const curve = new THREE.SplineCurve(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    const smoothPts = curve.getPoints(pts.length * 12);
+    smoothPts[0].x = pts[0][0]; smoothPts[smoothPts.length - 1].x = pts[pts.length - 1][0];
+    const m = new THREE.Mesh(new THREE.LatheGeometry(smoothPts, seg), mat);
     m.castShadow = true;
     m.receiveShadow = true;
     return m;
   };
   body.add(lathe([[0, 0.42], [0.4, 0.42], [0.55, 0.6], [0.66, 0.95], [0.72, 1.4], [0.72, 1.95], [0.66, 2.45], [0.55, 2.8]], white));
   body.add(lathe([[0.55, 2.8], [0.45, 3.1], [0.3, 3.4], [0.12, 3.63], [0.0, 3.72]], red));
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.712, 0.68, 0.2, 12, 1, true), red);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.712, 0.68, 0.2, 96, 1, true), red);
   band.position.y = 1.07;
   band.castShadow = true;
   body.add(band);
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), metal);
-  tip.position.y = 3.74;
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 32, 16), metal);
+  tip.position.y = 4.05;
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.026, 0.36, 24), metal);
+  antenna.position.y = 3.86;
+  body.add(antenna);
   body.add(tip);
 
   // сопло
-  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.44, 0.36, 10, 1, true), dark);
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.44, 0.36, 64, 1, true), dark);
   nozzle.position.y = 0.25;
   nozzle.castShadow = true;
   body.add(nozzle);
-  const nozzleIn = new THREE.Mesh(new THREE.CircleGeometry(0.3, 10), new THREE.MeshBasicMaterial({ color: 0x14161c }));
+  const nozzleIn = new THREE.Mesh(new THREE.CircleGeometry(0.3, 64), new THREE.MeshBasicMaterial({ color: 0x14161c }));
   nozzleIn.rotation.x = Math.PI / 2;
   nozzleIn.position.y = 0.4;
   body.add(nozzleIn);
@@ -212,7 +266,7 @@ function buildRocket() {
   fs.lineTo(0.55, 0.06);
   fs.lineTo(0, 0.5);
   fs.closePath();
-  const finGeo = new THREE.ExtrudeGeometry(fs, { depth: 0.09, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 1, curveSegments: 5 });
+  const finGeo = new THREE.ExtrudeGeometry(fs, { depth: 0.09, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.035, bevelSegments: 8, curveSegments: 32 });
   finGeo.translate(0, 0, -0.045);
   for (const a of [0, Math.PI, -Math.PI / 2]) {
     const holder = new THREE.Group();
@@ -226,14 +280,14 @@ function buildRocket() {
 
   // иллюминатор с откидной крышкой
   const portY = 1.92;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.06, 6, 16), metal);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.075, 32, 96), red);
   ring.position.set(0, portY, 0.705);
   ring.castShadow = true;
   body.add(ring);
-  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.255, 16), new THREE.MeshBasicMaterial({ color: 0x0c1020 }));
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.255, 64), new THREE.MeshBasicMaterial({ color: 0x0c1020 }));
   hole.position.set(0, portY, 0.7);
   body.add(hole);
-  const cabin = new THREE.Mesh(new THREE.CircleGeometry(0.16, 12), new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0 }));
+  const cabin = new THREE.Mesh(new THREE.CircleGeometry(0.16, 48), new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0 }));
   cabin.position.set(0, portY - 0.05, 0.702);
   body.add(cabin);
   const hinge = new THREE.Group();
@@ -242,12 +296,13 @@ function buildRocket() {
   door.position.x = 0.27;
   hinge.add(door);
   const glass = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.235, 0.235, 0.05, 16),
-    new THREE.MeshStandardMaterial({ color: 0x86dcff, emissive: 0x1d6c9c, emissiveIntensity: 0.7, roughness: 0.12, metalness: 0.25, flatShading: true }),
+    new THREE.SphereGeometry(0.235, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshPhysicalMaterial({ color: 0xff4a3a, emissive: 0x5a0a06, emissiveIntensity: 0.5, roughness: 0.05, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.03 }),
   );
   glass.rotation.x = Math.PI / 2;
+  glass.scale.y = 0.35;
   door.add(glass);
-  const doorRing = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.04, 6, 16), metal);
+  const doorRing = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.045, 24, 96), red);
   doorRing.position.z = 0.02;
   door.add(doorRing);
   const shine = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }));
@@ -260,13 +315,13 @@ function buildRocket() {
   const flame = new THREE.Group();
   flame.position.y = 0.1;
   shake.add(flame);
-  const fGeo = new THREE.ConeGeometry(0.42, 2.3, 12, 1, true);
+  const fGeo = new THREE.ConeGeometry(0.42, 2.3, 48, 8, true);
   fGeo.rotateX(Math.PI);
   fGeo.translate(0, -1.15, 0);
   const outer = new THREE.Mesh(fGeo, new THREE.MeshBasicMaterial({
     color: 0xff7a2a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   }));
-  const iGeo = new THREE.ConeGeometry(0.25, 1.35, 10, 1, true);
+  const iGeo = new THREE.ConeGeometry(0.25, 1.35, 48, 8, true);
   iGeo.rotateX(Math.PI);
   iGeo.translate(0, -0.67, 0);
   const inner = new THREE.Mesh(iGeo, new THREE.MeshBasicMaterial({
@@ -288,50 +343,44 @@ function buildLaunchSite(rnd) {
   const g = new THREE.Group();
 
   // земля: ровная у стартового стола, холмы и горы вдали
-  const geo = new THREE.PlaneGeometry(900, 900, 110, 110);
+  const geo = new THREE.PlaneGeometry(900, 900, 240, 240);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const cA = new THREE.Color('#8fae5d'), cB = new THREE.Color('#b3a76b'), cC = new THREE.Color('#6f9a55'), cR = new THREE.Color('#9aa0a8');
+  const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const d = Math.hypot(x, z);
     const hill = Math.sin(x * 0.045) * Math.cos(z * 0.05) * 3 + Math.sin(x * 0.011 + z * 0.017) * 9 + Math.cos(z * 0.021 - x * 0.006) * 5;
     const k = smooth(28, 120, d);
     const mount = z < -150 ? smooth(150, 330, -z) * (20 + Math.abs(Math.sin(x * 0.02)) * 55) : 0;
-    pos.setY(i, (hill * k + mount) * (d < 26 ? 0 : 1) + (rnd() - 0.5) * 0.6 * k);
-  }
-  const ng = geo.toNonIndexed();
-  const p2 = ng.attributes.position;
-  const colors = new Float32Array(p2.count * 3);
-  const cA = new THREE.Color('#8fae5d'), cB = new THREE.Color('#b3a76b'), cC = new THREE.Color('#6f9a55'), cR = new THREE.Color('#9aa0a8');
-  const tmp = new THREE.Color();
-  for (let i = 0; i < p2.count; i += 3) {
-    const x = (p2.getX(i) + p2.getX(i + 1) + p2.getX(i + 2)) / 3;
-    const y = (p2.getY(i) + p2.getY(i + 1) + p2.getY(i + 2)) / 3;
-    const z = (p2.getZ(i) + p2.getZ(i + 1) + p2.getZ(i + 2)) / 3;
+    const y = (hill * k + mount) * (d < 26 ? 0 : 1);
+    pos.setY(i, y);
     const n = Math.sin(x * 0.09) * Math.cos(z * 0.07) + Math.sin(x * 0.031 + z * 0.05);
     tmp.copy(cA).lerp(n > 0.4 ? cB : cC, Math.abs(n) * 0.5);
     if (y > 26) tmp.lerp(cR, smooth(26, 50, y));
-    if (y > 52) tmp.set('#f2f5fa');
-    for (let k = 0; k < 3; k++) tmp.toArray(colors, (i + k) * 3);
+    if (y > 52) tmp.lerp(new THREE.Color('#f2f5fa'), smooth(52, 60, y));
+    tmp.toArray(colors, i * 3);
   }
-  ng.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  ng.computeVertexNormals();
-  const ground = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
   ground.receiveShadow = true;
   g.add(ground);
 
   // бетонная площадка
   const concrete = lowpoly(0xb9bcc4, { roughness: 0.95 });
-  const apron = new THREE.Mesh(new THREE.CylinderGeometry(9, 9.5, 0.12, 14), lowpoly(0xa6aab2, { roughness: 1 }));
+  const apron = new THREE.Mesh(new THREE.CylinderGeometry(9, 9.5, 0.12, 96), lowpoly(0xa6aab2, { roughness: 1 }));
   apron.position.y = 0.06;
   apron.receiveShadow = true;
   g.add(apron);
-  const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.95, 0.32, 10), concrete);
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.95, 0.32, 96), concrete);
   pad.position.y = 0.16;
   pad.castShadow = true;
   pad.receiveShadow = true;
   g.add(pad);
-  const stripe = new THREE.Mesh(new THREE.TorusGeometry(2.35, 0.06, 4, 24), lowpoly(0xffc533, { roughness: 0.8 }));
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(2.35, 0.06, 16, 128), lowpoly(0xffc533, { roughness: 0.8 }));
   stripe.rotation.x = Math.PI / 2;
   stripe.position.y = 0.33;
   g.add(stripe);
@@ -371,7 +420,7 @@ function buildLaunchSite(rnd) {
   top.position.y = H + 0.04;
   top.castShadow = true;
   tower.add(top);
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 32, 16), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
   beacon.position.y = H + 0.22;
   tower.add(beacon);
   const armPivot = new THREE.Group();
@@ -387,7 +436,7 @@ function buildLaunchSite(rnd) {
   for (const [px, pz] of [[-6.5, -5], [6.5, -5], [-10, -13], [10, -13]]) {
     const m = new THREE.Group();
     m.position.set(px, 0, pz);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 7, 5), lowpoly(0x8e949e));
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 7, 24), lowpoly(0x8e949e));
     pole.position.y = 3.5;
     pole.castShadow = true;
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.25, 0.2), lowpoly(0xfff7d0, { emissive: 0xfff2b0, emissiveIntensity: 0.5 }));
@@ -401,7 +450,7 @@ function buildLaunchSite(rnd) {
   hangar.position.set(-21, 0, -30);
   const hb = new THREE.Mesh(new THREE.BoxGeometry(7, 3, 5), lowpoly(0xe9e6df));
   hb.position.y = 1.5;
-  const roof2 = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 7, 8, 1, false, 0, Math.PI), lowpoly(0x6f88b8));
+  const roof2 = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 7, 64, 1, false, 0, Math.PI), lowpoly(0x6f88b8));
   roof2.rotation.z = Math.PI / 2;
   roof2.position.y = 3;
   const gate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.2, 3), lowpoly(0x4c5566));
@@ -417,7 +466,7 @@ function buildLaunchSite(rnd) {
   c1.position.y = 1;
   const c2 = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 2), lowpoly(0xdcd8cf));
   c2.position.set(0.6, 2.6, 0);
-  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2.4), lowpoly(0xf6f6f6, { side: THREE.DoubleSide }));
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.8, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2.4), lowpoly(0xf6f6f6, { side: THREE.DoubleSide }));
   dish.position.set(-1, 3.1, 0);
   dish.rotation.x = -2.2;
   ctrl.add(c1, c2, dish);
@@ -426,10 +475,10 @@ function buildLaunchSite(rnd) {
   g.add(ctrl);
 
   for (let i = 0; i < 3; i++) {
-    const tank = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 7), lowpoly(0xf4f4f4, { roughness: 0.4 }));
+    const tank = new THREE.Mesh(new THREE.SphereGeometry(1.1, 64, 32), lowpoly(0xf4f4f4, { roughness: 0.4 }));
     tank.position.set(12 + i * 2.6, 1.5, -16 - i * 1.2);
     tank.castShadow = true;
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 0.8, 6), lowpoly(0x9aa0a8));
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 0.8, 48), lowpoly(0x9aa0a8));
     leg.position.set(tank.position.x, 0.4, tank.position.z);
     g.add(tank, leg);
   }
@@ -444,9 +493,9 @@ function buildLaunchSite(rnd) {
     if (z > 8) continue;
     const tr = new THREE.Group();
     const s = 0.7 + rnd() * 1.1;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.9 * s, 2.4 * s, 6), leaf[i % 3]);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.9 * s, 2.4 * s, 32, 4), leaf[i % 3]);
     cone.position.y = 1.7 * s;
-    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * s, 0.16 * s, 0.8 * s, 5), trunk);
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * s, 0.16 * s, 0.8 * s, 16), trunk);
     st.position.y = 0.4 * s;
     cone.castShadow = true;
     tr.add(cone, st);
@@ -461,7 +510,7 @@ function cloudGeometry(rnd, scale, ox = 0, oy = 0, oz = 0) {
   const parts = [];
   const n = 7 + Math.floor(rnd() * 5);
   for (let i = 0; i < n; i++) {
-    const g = new THREE.IcosahedronGeometry(1, 1);
+    const g = new THREE.IcosahedronGeometry(1, 6);
     const k = i / (n - 1) - 0.5;
     const s = (0.55 + rnd() * 0.55) * scale * (1 - Math.abs(k) * 0.9);
     const x = k * 3 * scale + (rnd() - 0.5) * 0.5 * scale;
@@ -481,7 +530,7 @@ function cloudGeometry(rnd, scale, ox = 0, oy = 0, oz = 0) {
   return merged;
 }
 const cloudMat = () => new THREE.MeshStandardMaterial({
-  color: 0xffffff, emissive: 0xbac8e2, emissiveIntensity: 0.42, flatShading: true, roughness: 1,
+  color: 0xffffff, emissive: 0xbac8e2, emissiveIntensity: 0.42, roughness: 1,
 });
 
 function buildAstronaut() {
@@ -491,36 +540,36 @@ function buildAstronaut() {
   const suit = lowpoly(0xf3f4f7, { roughness: 0.55 });
   const suit2 = lowpoly(0xdfe3ea, { roughness: 0.6 });
   const grey = lowpoly(0x9da5b4, { roughness: 0.5, metalness: 0.2 });
-  const accent = lowpoly(0xff7a52, { roughness: 0.5 });
+  const accent = lowpoly(0xf2b544, { roughness: 0.25, metalness: 1 });
   const gold = lowpoly(0xf2b544, { roughness: 0.25, metalness: 1 });
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.3, 3, 9), suit);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.3, 16, 48), suit);
   torso.scale.z = 0.82;
   torso.castShadow = true;
   body.add(torso);
-  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.04, 5, 12), grey);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.04, 24, 96), grey);
   belt.rotation.x = Math.PI / 2;
   belt.position.y = -0.12;
   belt.scale.y = 0.82;
   body.add(belt);
-  const panel = new THREE.Mesh(new RoundedBoxGeometry(0.3, 0.2, 0.08, 2, 0.02), suit2);
+  const panel = new THREE.Mesh(new RoundedBoxGeometry(0.3, 0.2, 0.08, 8, 0.03), suit2);
   panel.position.set(0, 0.06, 0.25);
   body.add(panel);
   [[-0.08, 0xff5e7e], [0, 0xffc533], [0.08, 0x48c6ff]].forEach(([x, c]) => {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.6 }));
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.03, 24, 12), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.6 }));
     b.position.set(x, 0.07, 0.295);
     body.add(b);
   });
-  const patch = new THREE.Mesh(new THREE.CircleGeometry(0.06, 8), accent);
+  const patch = new THREE.Mesh(new THREE.CircleGeometry(0.06, 48), accent);
   patch.position.set(0.21, 0.18, 0.2);
   patch.rotation.y = 0.6;
   body.add(patch);
 
-  const pack = new THREE.Mesh(new RoundedBoxGeometry(0.52, 0.6, 0.26, 2, 0.05), suit2);
+  const pack = new THREE.Mesh(new RoundedBoxGeometry(0.52, 0.6, 0.26, 8, 0.09), suit2);
   pack.position.set(0, 0.06, -0.32);
   pack.castShadow = true;
   body.add(pack);
-  const pack2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 6), grey);
+  const pack2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 32), grey);
   pack2.position.set(0.18, 0.06, -0.46);
   const pack3 = pack2.clone();
   pack3.position.x = -0.18;
@@ -530,17 +579,17 @@ function buildAstronaut() {
   const head = new THREE.Group();
   head.position.y = 0.6;
   body.add(head);
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 9), suit);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 96, 64), suit);
   helmet.castShadow = true;
   head.add(helmet);
   const visor = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 18, 12, -Math.PI * 0.36, Math.PI * 0.72, Math.PI * 0.26, Math.PI * 0.42),
-    new THREE.MeshStandardMaterial({ color: 0x1b2844, roughness: 0.08, metalness: 0.9, emissive: 0x0b1430, emissiveIntensity: 0.6 }),
+    new THREE.SphereGeometry(0.3, 96, 64, -Math.PI * 0.36, Math.PI * 0.72, Math.PI * 0.26, Math.PI * 0.42),
+    new THREE.MeshPhysicalMaterial({ color: 0x07080c, roughness: 0.04, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.02 }),
   );
   visor.scale.set(1.04, 1.02, 1.08);
   visor.position.z = 0.04;
   head.add(visor);
-  const visorRim = new THREE.Mesh(new THREE.TorusGeometry(0.255, 0.028, 5, 18, Math.PI * 2), gold);
+  const visorRim = new THREE.Mesh(new THREE.TorusGeometry(0.255, 0.028, 24, 96, Math.PI * 2), gold);
   visorRim.position.set(0, 0.0, 0.255);
   visorRim.scale.set(1.08, 0.86, 1);
   head.add(visorRim);
@@ -548,11 +597,11 @@ function buildAstronaut() {
   refl.position.set(-0.12, 0.07, 0.345);
   refl.rotation.set(0, -0.35, -0.5);
   head.add(refl);
-  const neck = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 5, 12), grey);
+  const neck = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 24, 96), grey);
   neck.rotation.x = Math.PI / 2;
   neck.position.y = -0.3;
   head.add(neck);
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.08), grey);
+  const lamp = new THREE.Mesh(new RoundedBoxGeometry(0.08, 0.06, 0.08, 6, 0.02), grey);
   lamp.position.set(0.28, 0.12, 0.1);
   head.add(lamp);
 
@@ -560,25 +609,25 @@ function buildAstronaut() {
   const mkArm = (side) => {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.36, 0.2, 0);
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.2, 2, 7), suit);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.2, 12, 32), suit);
     upper.position.y = -0.16;
     upper.castShadow = true;
     shoulder.add(upper);
     const elbow = new THREE.Group();
     elbow.position.y = -0.32;
     shoulder.add(elbow);
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.18, 2, 7), suit);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.18, 12, 32), suit);
     fore.position.y = -0.13;
     fore.castShadow = true;
     elbow.add(fore);
-    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.025, 4, 10), accent);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.025, 16, 48), accent);
     cuff.rotation.x = Math.PI / 2;
     cuff.position.y = -0.24;
     elbow.add(cuff);
     const hand = new THREE.Group();
     hand.position.y = -0.31;
     elbow.add(hand);
-    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), grey);
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.1, 48, 24), grey);
     glove.scale.set(1, 1.15, 0.9);
     glove.castShadow = true;
     hand.add(glove);
@@ -591,18 +640,18 @@ function buildAstronaut() {
   const mkLeg = (side) => {
     const hip = new THREE.Group();
     hip.position.set(side * 0.15, -0.34, 0);
-    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.2, 2, 7), suit);
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.2, 12, 32), suit);
     thigh.position.y = -0.17;
     thigh.castShadow = true;
     hip.add(thigh);
     const knee = new THREE.Group();
     knee.position.y = -0.34;
     hip.add(knee);
-    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.18, 2, 7), suit);
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.18, 12, 32), suit);
     shin.position.y = -0.13;
     shin.castShadow = true;
     knee.add(shin);
-    const boot = new THREE.Mesh(new RoundedBoxGeometry(0.22, 0.14, 0.3, 2, 0.05), grey);
+    const boot = new THREE.Mesh(new RoundedBoxGeometry(0.22, 0.14, 0.3, 8, 0.06), grey);
     boot.position.set(0, -0.3, 0.04);
     boot.castShadow = true;
     knee.add(boot);
@@ -614,19 +663,19 @@ function buildAstronaut() {
 
   // тюбик космической еды в правой руке
   const tube = new THREE.Group();
-  const tubeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.085, 0.32, 8), lowpoly(0xd7dde7, { roughness: 0.25, metalness: 0.7 }));
-  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.08, 0.12, 8), accent);
+  const tubeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.085, 0.32, 48), lowpoly(0xd7dde7, { roughness: 0.25, metalness: 0.7 }));
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.08, 0.12, 48), accent);
   label.position.y = 0.02;
   const crimp = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.035, 0.04), lowpoly(0xc2c9d4, { metalness: 0.6, roughness: 0.3 }));
   crimp.position.y = 0.17;
-  const neckT = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.045, 0.06, 8), lowpoly(0xc2c9d4, { metalness: 0.6, roughness: 0.3 }));
+  const neckT = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.045, 0.06, 32), lowpoly(0xc2c9d4, { metalness: 0.6, roughness: 0.3 }));
   neckT.position.y = -0.19;
   const nozzle = new THREE.Object3D();
   nozzle.position.y = -0.25;
   tube.add(tubeBody, label, crimp, neckT, nozzle);
   tube.position.set(0, -0.06, 0.04);
   armR.hand.add(tube);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), lowpoly(0xff5e7e));
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 32), lowpoly(0xff5e7e));
   cap.position.y = -0.245;
   tube.add(cap);
 
@@ -636,22 +685,11 @@ function buildAstronaut() {
 
 function buildEarth() {
   const R = 60;
-  const geo = new THREE.IcosahedronGeometry(R, 22);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const ocean = new THREE.Color('#2e6fd6'), deep = new THREE.Color('#214fa8'), land = new THREE.Color('#5e9e52'), sand = new THREE.Color('#c8b778');
-  const tmp = new THREE.Color();
-  for (let i = 0; i < pos.count; i += 3) {
-    const x = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3 / R;
-    const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3 / R;
-    const z = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3 / R;
-    const n = Math.sin(x * 5.1 + 1.3) * Math.cos(z * 4.3 - 0.4) + Math.sin(y * 6.2 + x * 2.1) * 0.6 + Math.sin(z * 9 + y * 3) * 0.25;
-    if (n > 0.55) tmp.copy(land).lerp(sand, clamp((n - 0.9) * 1.6));
-    else tmp.copy(ocean).lerp(deep, clamp(-n * 0.5));
-    for (let k = 0; k < 3; k++) tmp.toArray(colors, (i + k) * 3);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.75, transparent: true, opacity: 0, fog: false });
+  const geo = new THREE.SphereGeometry(R, 256, 128);
+  const tex = new THREE.TextureLoader().load('textures/earth.jpg');
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, emissive: 0x0d2a66, emissiveIntensity: 0.35, transparent: true, opacity: 0, fog: false });
   const earth = new THREE.Mesh(geo, mat);
   const atmo = new THREE.Mesh(
     new THREE.SphereGeometry(R * 1.035, 64, 48),
@@ -666,7 +704,7 @@ function buildEarth() {
   );
   const grp = new THREE.Group();
   grp.add(earth, atmo);
-  grp.rotation.set(0.35, 0, 1.25);
+  grp.rotation.set(1.05, 0, 0.15);
   return { group: grp, earth, atmo };
 }
 
@@ -680,8 +718,9 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.autoClear = false;
 
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   const fontJson = await fetch('assets/fonts/fredoka_bold.typeface.json').then((r) => r.json());
   const font = new FontLoader().parse(fontJson);
 
@@ -693,8 +732,6 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
   camera.position.set(0, CAM_START_Y, camDist);
 
   // ─── небо (полноэкранный квад) ──────────────────────────────────────
-  const skyScene = new THREE.Scene();
-  const skyCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const skyU = {
     uTop: { value: new THREE.Color() },
     uBot: { value: new THREE.Color() },
@@ -706,11 +743,12 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
     uTime: { value: 0 },
     uDisk: { value: 0 },
   };
-  skyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  // небо — часть основной сцены, чтобы его было видно сквозь прозрачное желе
+  const skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
     uniforms: skyU,
     depthWrite: false,
     depthTest: false,
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }',
     fragmentShader: `
       varying vec2 vUv;
       uniform vec3 uTop, uBot;
@@ -738,7 +776,10 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
         col += sc * s * tw * uStars * (1.0 - exp(-r / 0.12) * 0.9);
         gl_FragColor = vec4(col, 1.0);
       }`,
-  })));
+  }));
+  skyMesh.frustumCulled = false;
+  skyMesh.renderOrder = -1000;
+  scene.add(skyMesh);
 
   // ─── свет ──────────────────────────────────────────────────────────
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6d7a52, 1.1);
@@ -816,14 +857,16 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
   const fscale = 1 / fontJson.resolution;
   let li = 0;
   const lineWidths = [];
+  const bubbleGeo = new THREE.SphereGeometry(1, 24, 16);
+  const bubbleMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, clearcoat: 1, emissive: 0x222230, transparent: false, opacity: 1 });
   LINES.forEach((line, row) => {
     let x = 0;
     for (const ch of line) {
       const glyph = fontJson.glyphs[ch];
       const adv = (glyph ? glyph.ha : 500) * fscale;
       const geo = new TextGeometry(ch, {
-        font, size: 1, height: 0.36, curveSegments: 9,
-        bevelEnabled: true, bevelThickness: 0.11, bevelSize: 0.06, bevelSegments: 5,
+        font, size: 1, height: 0.26, curveSegments: 28,
+        bevelEnabled: true, bevelThickness: 0.17, bevelSize: 0.085, bevelSegments: 14,
       });
       geo.computeBoundingBox();
       const bb = geo.boundingBox;
@@ -840,6 +883,18 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
         mesh, mat, row, baseX: x + cx, cy: (bb.min.y + bb.max.y) / 2,
         spring: 0, vel: 0, arrivals: [], color: PASTE[li % PASTE.length],
       });
+      // пузырьки воздуха внутри желе
+      const sampler = new MeshSurfaceSampler(mesh).build();
+      const bp = new THREE.Vector3(), bn = new THREE.Vector3();
+      for (let k = 0, tries = 0; k < 3 && tries < 60; tries++) {
+        sampler.sample(bp, bn);
+        if (Math.abs(bn.z) < 0.6) continue;
+        const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+        bubble.position.copy(bp).addScaledVector(bn, -0.11 - rnd() * 0.06);
+        bubble.scale.setScalar(0.012 + rnd() * 0.02);
+        mesh.add(bubble);
+        k++;
+      }
       word.add(mesh);
       x += adv + 0.015;
       li++;
@@ -848,11 +903,22 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
   });
   const wordW = Math.max(...lineWidths);
 
+  // отражения окружения: желе, ракета и астронавт бликуют, как глянцевые игрушки
+  const applyEnv = (root, intensity) => root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) {
+      if (m && (m.isMeshStandardMaterial) && !m.envMap) { m.envMap = envTex; m.envMapIntensity = intensity; m.needsUpdate = true; }
+    }
+  });
+  letters.forEach((l) => { l.mat.envMap = envTex; l.mat.envMapIntensity = 1.4; });
+  applyEnv(rocket.root, 0.45);
+  applyEnv(astro.root, 0.45);
+
   // ─── еда: капли, летящие из тюбика к буквам ────────────────────────
   const BLOBS_PER = 4;
-  const blobGeo = new THREE.IcosahedronGeometry(1, 3);
+  const blobGeo = new THREE.IcosahedronGeometry(1, 12);
   const blobs = [];
-  const blobMats = letters.map((l) => blobMaterial(l.color));
+  const blobMats = letters.map((l) => { const m = blobMaterial(l.color); m.envMap = envTex; m.envMapIntensity = 1.4; return m; });
   for (let j = 0; j < letters.length * BLOBS_PER; j++) {
     const L = Math.floor(j / BLOBS_PER);
     const e = T.SQUEEZE + j * T.BLOB_GAP + rnd() * 0.02;
@@ -874,8 +940,8 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
   // ─── дым: инстансы low-poly клубов ─────────────────────────────────
   const SMOKE_N = 640;
   const smokeMesh = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 1),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 1, emissive: 0xa9b3c6, emissiveIntensity: 0.4 }),
+    new THREE.IcosahedronGeometry(1, 5),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, emissive: 0xa9b3c6, emissiveIntensity: 0.4 }),
     SMOKE_N,
   );
   smokeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1427,8 +1493,6 @@ export async function initHero({ canvas, header, tagline, skipBtn, replayBtn, cu
     if (hoverTimer <= 0) { hoverTimer = 0.08; hoverCheck(); }
 
     setUI();
-    renderer.clear();
-    renderer.render(skyScene, skyCam);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(frame);
